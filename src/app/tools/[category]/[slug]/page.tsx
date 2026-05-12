@@ -8,6 +8,8 @@ import { getToolSeo } from "@/config/seo"
 import { siteConfig } from "@/config/site"
 import { ToolRenderer } from "@/components/tools/tool-renderer"
 
+export const runtime = "edge"
+
 export async function generateMetadata({ params }: { params: Promise<{ category: string; slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   const tool = getToolBySlug(slug)
