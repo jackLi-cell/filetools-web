@@ -1,0 +1,46 @@
+{
+  "name": "filetools-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "tsx src/seed.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0",
+    "@prisma/client": "^6.0.0",
+    "@types/archiver": "^7.0.0",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/ws": "^8.18.1",
+    "archiver": "^8.0.0",
+    "argon2": "^0.41.0",
+    "bullmq": "^5.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "file-type": "^19.0.0",
+    "ioredis": "^5.4.0",
+    "marked": "^18.0.3",
+    "pdf-lib": "^1.17.1",
+    "puppeteer": "^24.43.1",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.34.5",
+    "ws": "^8.20.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "prisma": "^6.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

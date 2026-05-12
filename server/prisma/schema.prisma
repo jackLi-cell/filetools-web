@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int       @id @default(autoincrement())
+  email              String    @unique @db.VarChar(255)
+  emailVerified      Boolean   @default(false) @map("email_verified")
+  passwordHash       String    @map("password_hash") @db.VarChar(255)
+  name               String?   @db.VarChar(100)
+  role               String    @default("user") @db.VarChar(20)
+  credits            Int       @default(0)
+  totalEarned        Int       @default(0) @map("total_earned")
+  totalSpent         Int       @default(0) @map("total_spent")
+  lastCheckinDate    DateTime? @map("last_checkin_date") @db.Date
+  consecutiveCheckin Int       @default(0) @map("consecutive_checkin")
+  status             String    @default("active") @db.VarChar(20)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  sessions           Session[]
+  creditTransactions CreditTransaction[]
+  processTasks       ProcessTask[]
+  orders             Order[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @db.VarChar(64)
+  userId    Int      @map("user_id")
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  userAgent String?  @map("user_agent") @db.VarChar(500)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model CreditTransaction {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  type         String   @db.VarChar(20)
+  amount       Int
+  balanceAfter Int      @map("balance_after")
+  source       String   @db.VarChar(50)
+  toolSlug     String?  @map("tool_slug") @db.VarChar(100)
+  taskId       String?  @map("task_id") @db.VarChar(36)
+  note         String?  @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("credit_transactions")
+}
+
+model ProcessTask {
+  id             String    @id @db.VarChar(36)
+  userId         Int?      @map("user_id")
+  toolSlug       String    @map("tool_slug") @db.VarChar(100)
+  status         String    @default("pending") @db.VarChar(20)
+  inputFileKey   String?   @map("input_file_key") @db.VarChar(500)
+  inputFileName  String?   @map("input_file_name") @db.VarChar(255)
+  inputFileSize  BigInt?   @map("input_file_size")
+  outputFileKey  String?   @map("output_file_key") @db.VarChar(500)
+  outputFileName String?   @map("output_file_name") @db.VarChar(255)
+  outputFileSize BigInt?   @map("output_file_size")
+  params         Json?
+  creditsCost    Int       @default(0) @map("credits_cost")
+  errorMessage   String?   @map("error_message") @db.Text
+  ipAddress      String?   @map("ip_address") @db.VarChar(45)
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  expiresAt      DateTime? @map("expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([expiresAt])
+  @@map("process_tasks")
+}
+
+model ToolConfig {
+  id                  Int      @id @default(autoincrement())
+  toolSlug            String   @unique @map("tool_slug") @db.VarChar(100)
+  name                String   @db.VarChar(100)
+  category            String   @db.VarChar(50)
+  enabled             Boolean  @default(true)
+  isFree              Boolean  @default(false) @map("is_free")
+  creditsCost         Int      @default(0) @map("credits_cost")
+  dailyFreeAnonymous  Int      @default(0) @map("daily_free_anonymous")
+  dailyFreeRegistered Int      @default(0) @map("daily_free_registered")
+  maxFileSizeMb       Int      @default(30) @map("max_file_size_mb")
+  maxFileSizePaidMb   Int      @default(100) @map("max_file_size_paid_mb")
+  maxPages            Int      @default(100) @map("max_pages")
+  maxDurationSec      Int      @default(300) @map("max_duration_sec")
+  priority            Int      @default(0)
+  description         String?  @db.Text
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  updatedBy           Int?     @map("updated_by")
+
+  @@map("tool_configs")
+}
+
+model DailyStat {
+  id              Int      @id @default(autoincrement())
+  date            DateTime @unique @db.Date
+  pageViews       Int      @default(0) @map("page_views")
+  uniqueVisitors  Int      @default(0) @map("unique_visitors")
+  newUsers        Int      @default(0) @map("new_users")
+  totalTasks      Int      @default(0) @map("total_tasks")
+  successTasks    Int      @default(0) @map("success_tasks")
+  creditsEarned   Int      @default(0) @map("credits_earned")
+  creditsSpent    Int      @default(0) @map("credits_spent")
+  revenueCents    Int      @default(0) @map("revenue_cents")
+
+  @@map("daily_stats")
+}
+
+model ToolDailyStat {
+  id              Int      @id @default(autoincrement())
+  date            DateTime @db.Date
+  toolSlug        String   @map("tool_slug") @db.VarChar(100)
+  useCount        Int      @default(0) @map("use_count")
+  successCount    Int      @default(0) @map("success_count")
+  failCount       Int      @default(0) @map("fail_count")
+  creditsConsumed Int      @default(0) @map("credits_consumed")
+  avgProcessMs    Int      @default(0) @map("avg_process_ms")
+
+  @@unique([date, toolSlug])
+  @@map("tool_daily_stats")
+}
+
+model Order {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @map("user_id")
+  orderNo         String    @unique @map("order_no") @db.VarChar(64)
+  packageName     String    @map("package_name") @db.VarChar(50)
+  creditsAmount   Int       @map("credits_amount")
+  priceCents      Int       @map("price_cents")
+  paymentMethod   String    @map("payment_method") @db.VarChar(50)
+  paymentChannel  String    @map("payment_channel") @db.VarChar(30)
+  paymentStatus   String    @default("pending") @map("payment_status") @db.VarChar(20)
+  tradeNo         String?   @map("trade_no") @db.VarChar(100)
+  errorMessage    String?   @map("error_message") @db.VarChar(500)
+  expiresAt       DateTime? @map("expires_at")
+  paidAt          DateTime? @map("paid_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("orders")
+}
+
+model CreditPackage {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(50)
+  creditsAmount Int      @map("credits_amount")
+  priceCents    Int      @map("price_cents")
+  enabled       Boolean  @default(true)
+  sortOrder     Int      @default(0) @map("sort_order")
+  description   String?  @db.VarChar(255)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("credit_packages")
+}

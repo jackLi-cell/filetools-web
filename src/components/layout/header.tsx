@@ -1,0 +1,89 @@
+"use client"
+
+import Link from "next/link"
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { siteConfig } from "@/config/site"
+import { useAuth } from "@/lib/auth-context"
+
+const navLinks = [
+  { href: "/", label: "首页" },
+  { href: "/tools", label: "全部工具" },
+  { href: "/pricing", label: "定价" },
+]
+
+export function Header() {
+  const [open, setOpen] = useState(false)
+  const { user, loading, logout } = useAuth()
+
+  return (
+    <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+      <div className="container mx-auto flex h-14 items-center justify-between px-4">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 text-white text-sm">
+            🐱
+          </div>
+          <span className="text-lg font-semibold text-gray-900">{siteConfig.name}</span>
+        </Link>
+
+        <nav className="hidden md:flex items-center gap-6">
+          {navLinks.map((link) => (
+            <Link key={link.href} href={link.href} className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="hidden md:flex items-center gap-3">
+          {loading ? null : user ? (
+            <>
+              <Link href="/account" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">{user.credits} 积分</span>
+                <span>{user.name || user.email}</span>
+              </Link>
+              <Button variant="ghost" size="sm" onClick={logout}>退出</Button>
+            </>
+          ) : (
+            <>
+              <Link href="/login"><Button variant="ghost" size="sm">登录</Button></Link>
+              <Link href="/register"><Button size="sm">注册</Button></Link>
+            </>
+          )}
+        </div>
+
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetTrigger className="md:hidden inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-gray-100">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-[280px]">
+            <nav className="flex flex-col gap-4 mt-8">
+              {navLinks.map((link) => (
+                <Link key={link.href} href={link.href} className="text-base text-gray-700 hover:text-gray-900 py-2" onClick={() => setOpen(false)}>
+                  {link.label}
+                </Link>
+              ))}
+              <div className="border-t pt-4 mt-2 flex flex-col gap-2">
+                {user ? (
+                  <>
+                    <Link href="/account" onClick={() => setOpen(false)}>
+                      <Button variant="outline" className="w-full">个人中心（{user.credits} 积分）</Button>
+                    </Link>
+                    <Button variant="ghost" onClick={() => { logout(); setOpen(false) }}>退出登录</Button>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/login" onClick={() => setOpen(false)}><Button variant="outline" className="w-full">登录</Button></Link>
+                    <Link href="/register" onClick={() => setOpen(false)}><Button className="w-full">注册</Button></Link>
+                  </>
+                )}
+              </div>
+            </nav>
+          </SheetContent>
+        </Sheet>
+      </div>
+    </header>
+  )
+}

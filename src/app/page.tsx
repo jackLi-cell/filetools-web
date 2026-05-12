@@ -1,65 +1,102 @@
-import Image from "next/image";
+import Link from "next/link"
+import { Input } from "@/components/ui/input"
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { categories, tools } from "@/config/tools"
 
-export default function Home() {
+const popularTools = tools.filter(t => t.version === "v0.1").slice(0, 8)
+
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="flex flex-col">
+      <section className="border-b bg-gradient-to-b from-blue-50/50 to-white py-16 md:py-24">
+        <div className="container mx-auto px-4 text-center">
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            灵猫转换 · 在线文件处理工具箱
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-base text-gray-600 mb-8 max-w-xl mx-auto">
+            图片压缩、PDF 转换、Office 文档转换、视频处理等 50+ 实用工具，大部分在浏览器本地处理，文件不上传服务器。
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+          <div className="max-w-md mx-auto">
+            <Input
+              type="search"
+              placeholder="搜索工具，如：图片压缩、PDF 合并、JSON 格式化..."
+              className="h-11 text-sm"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          </div>
         </div>
-      </main>
+      </section>
+
+      <section className="py-12 md:py-16">
+        <div className="container mx-auto px-4">
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">工具分类</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+            {categories.map((cat) => (
+              <Link key={cat.slug} href={`/tools/${cat.slug}`}>
+                <Card className="h-full hover:shadow-md transition-shadow cursor-pointer border-gray-200">
+                  <CardHeader className="p-4">
+                    <div className="text-2xl mb-2">{cat.icon}</div>
+                    <CardTitle className="text-sm font-medium">{cat.name}</CardTitle>
+                    <CardDescription className="text-xs">{cat.description}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-12 md:py-16 bg-gray-50">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">热门工具</h2>
+            <Link href="/tools" className="text-sm text-blue-600 hover:text-blue-700">
+              查看全部 →
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {popularTools.map((tool) => (
+              <Link key={tool.slug} href={`/tools/${tool.category}/${tool.slug}`}>
+                <Card className="h-full hover:shadow-md transition-shadow cursor-pointer">
+                  <CardHeader className="p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <CardTitle className="text-sm font-medium">{tool.name}</CardTitle>
+                      {tool.isFree && (
+                        <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+                          免费
+                        </Badge>
+                      )}
+                    </div>
+                    <CardDescription className="text-xs">{tool.description}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-12 md:py-16">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center p-6">
+              <div className="text-3xl mb-3">🔒</div>
+              <h3 className="text-sm font-medium text-gray-900 mb-2">隐私安全</h3>
+              <p className="text-xs text-gray-500">大部分工具在浏览器本地处理，文件不离开你的设备。需要服务器处理的文件，处理完成后立即删除。</p>
+            </div>
+            <div className="text-center p-6">
+              <div className="text-3xl mb-3">⚡</div>
+              <h3 className="text-sm font-medium text-gray-900 mb-2">即开即用</h3>
+              <p className="text-xs text-gray-500">无需下载安装任何软件，打开浏览器即可使用。支持电脑和手机。</p>
+            </div>
+            <div className="text-center p-6">
+              <div className="text-3xl mb-3">🎯</div>
+              <h3 className="text-sm font-medium text-gray-900 mb-2">免费为主</h3>
+              <p className="text-xs text-gray-500">29 个基础工具完全免费、无限使用。高级工具按次消耗少量积分，注册即送 100 积分。</p>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
-  );
+  )
 }
