@@ -55,6 +55,31 @@ export default async function ToolPage({ params }: { params: Promise<{ category:
     })),
   } : null
 
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "首页",
+        "item": siteConfig.url,
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": category.name,
+        "item": `${siteConfig.url}/tools/${category.slug}`,
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": seo?.h1 || tool.name,
+        "item": `${siteConfig.url}/tools/${tool.category}/${tool.slug}`,
+      },
+    ],
+  }
+
   const toolSchema = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
@@ -70,6 +95,7 @@ export default async function ToolPage({ params }: { params: Promise<{ category:
     <div className="container mx-auto px-4 py-6 md:py-10">
       {/* 结构化数据 */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(toolSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
       {faqSchema && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />}
       {/* 面包屑 */}
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
@@ -83,7 +109,7 @@ export default async function ToolPage({ params }: { params: Promise<{ category:
       {/* 工具标题 */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">{tool.name}</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">{seo?.h1 || tool.name}</h1>
           {tool.isFree ? (
             <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">免费</Badge>
           ) : (
@@ -93,7 +119,7 @@ export default async function ToolPage({ params }: { params: Promise<{ category:
             <Badge variant="outline" className="text-gray-500">本地处理</Badge>
           )}
         </div>
-        <p className="text-sm text-gray-600">{tool.description}</p>
+        <p className="text-sm text-gray-600">{seo?.intro || tool.description}</p>
       </div>
 
       {/* 工具操作区 */}
@@ -105,28 +131,44 @@ export default async function ToolPage({ params }: { params: Promise<{ category:
       <div className="mb-8">
         <h2 className="text-base font-medium text-gray-900 mb-3">使用说明</h2>
         <div className="text-sm text-gray-600 space-y-2">
-          {tool.isLocal ? (
-            <>
-              <p>1. 选择或拖拽文件到上方区域。</p>
-              <p>2. 根据需要调整参数设置。</p>
-              <p>3. 点击处理按钮，等待完成后下载结果。</p>
-              <p className="text-green-700 bg-green-50 px-3 py-2 rounded text-xs mt-3">
-                🔒 本工具在浏览器本地处理，文件不会上传到任何服务器。
-              </p>
-            </>
-          ) : (
-            <>
-              <p>1. 选择或拖拽文件到上方区域。</p>
-              <p>2. 根据需要调整参数设置。</p>
-              <p>3. 点击处理按钮，文件将上传到服务器处理。</p>
-              <p>4. 处理完成后下载结果文件。</p>
-              <p className="text-blue-700 bg-blue-50 px-3 py-2 rounded text-xs mt-3">
-                🔒 文件处理完成后立即从服务器删除，结果文件 2 小时后自动清理。
-              </p>
-            </>
-          )}
+          {(seo?.steps && seo.steps.length > 0 ? seo.steps : [
+            "选择或拖拽文件到上方区域。",
+            "根据需要调整参数设置。",
+            tool.isLocal ? "点击处理按钮，等待完成后下载结果。" : "点击处理按钮，等待服务器处理完成后下载结果文件。",
+          ]).map((step, index) => (
+            <p key={step}>{index + 1}. {step}</p>
+          ))}
+          <p className={`${tool.isLocal ? "text-green-700 bg-green-50" : "text-blue-700 bg-blue-50"} px-3 py-2 rounded text-xs mt-3`}>
+            {tool.isLocal
+              ? "本工具在浏览器本地处理，文件不会上传到任何服务器。"
+              : "文件处理完成后立即从服务器删除，结果文件 2 小时后自动清理。"}
+          </p>
         </div>
       </div>
+
+      {seo?.scenarios && seo.scenarios.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-base font-medium text-gray-900 mb-3">适合场景</h2>
+          <ul className="grid gap-2 text-sm text-gray-600 sm:grid-cols-2">
+            {seo.scenarios.map((scenario) => (
+              <li key={scenario} className="rounded border border-gray-200 px-3 py-2">
+                {scenario}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {seo?.notes && seo.notes.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-base font-medium text-gray-900 mb-3">注意事项</h2>
+          <ul className="list-disc space-y-2 pl-5 text-sm text-gray-600">
+            {seo.notes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* 相关工具 */}
       {relatedTools.length > 0 && (
