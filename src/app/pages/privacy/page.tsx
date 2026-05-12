@@ -9,7 +9,7 @@ export default function PrivacyPage() {
       <h1 className="text-2xl font-bold text-gray-900 mb-2">隐私政策</h1>
       <p className="text-xs text-gray-500 mb-8">最后更新日期：2026 年 5 月</p>
       <div className="text-sm text-gray-700 space-y-6 leading-relaxed">
-        <p>{siteConfig.name}（以下简称"本站"）重视用户隐私。本隐私政策说明本站在您使用服务过程中如何收集、使用、存储和保护您的信息。使用本站即表示您同意本政策的内容。</p>
+        <p>{siteConfig.name}（以下简称&quot;本站&quot;）重视用户隐私。本隐私政策说明本站在您使用服务过程中如何收集、使用、存储和保护您的信息。使用本站即表示您同意本政策的内容。</p>
 
         <section>
           <h2 className="text-base font-semibold text-gray-900 mb-3">1. 信息收集</h2>

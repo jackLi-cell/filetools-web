@@ -9,7 +9,7 @@ export default function DisclaimerPage() {
       <h1 className="text-2xl font-bold text-gray-900 mb-2">免责声明</h1>
       <p className="text-xs text-gray-500 mb-8">最后更新日期：2026 年 5 月</p>
       <div className="text-sm text-gray-700 space-y-6 leading-relaxed">
-        <p>使用 {siteConfig.name}（以下简称"本站"）提供的任何工具、内容和服务前，请仔细阅读本免责声明。使用本站即表示您同意以下条款。</p>
+        <p>使用 {siteConfig.name}（以下简称&quot;本站&quot;）提供的任何工具、内容和服务前，请仔细阅读本免责声明。使用本站即表示您同意以下条款。</p>
 
         <section>
           <h2 className="text-base font-semibold text-gray-900 mb-3">1. 服务性质</h2>

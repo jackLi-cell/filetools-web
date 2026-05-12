@@ -2,6 +2,15 @@ import { tools as staticTools, categories as staticCategories, Tool, ToolCategor
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
 
+interface ApiTool {
+  toolSlug: string
+  name: string
+  description?: string
+  category: string
+  isFree: boolean
+  creditsCost: number
+}
+
 export async function fetchTools(): Promise<Tool[]> {
   if (!API_URL) return staticTools.filter(t => t.version === "v0.1")
 
@@ -10,7 +19,7 @@ export async function fetchTools(): Promise<Tool[]> {
     if (!res.ok) return staticTools.filter(t => t.version === "v0.1")
     const data = await res.json()
     if (data.code === 0 && Array.isArray(data.data)) {
-      return data.data.map((t: any) => ({
+      return data.data.map((t: ApiTool) => ({
         slug: t.toolSlug,
         name: t.name,
         description: t.description || "",

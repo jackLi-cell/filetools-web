@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import type SignaturePad from "signature_pad"
 
 export function SignatureCreateTool() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const padRef = useRef<any>(null)
+  const padRef = useRef<SignaturePad | null>(null)
   const [color, setColor] = useState("#000000")
   const [bgColor, setBgColor] = useState("#ffffff")
   const [hasSignature, setHasSignature] = useState(false)
@@ -20,11 +21,12 @@ export function SignatureCreateTool() {
       canvas.width = canvas.offsetWidth * ratio
       canvas.height = canvas.offsetHeight * ratio
       canvas.getContext("2d")!.scale(ratio, ratio)
-      padRef.current = new SignaturePad(canvas, {
+      const pad = new SignaturePad(canvas, {
         backgroundColor: bgColor,
         penColor: color,
       })
-      padRef.current.addEventListener("endStroke", () => setHasSignature(!padRef.current.isEmpty()))
+      padRef.current = pad
+      pad.addEventListener("endStroke", () => setHasSignature(!pad.isEmpty()))
     }
     init()
     return () => { mounted = false }

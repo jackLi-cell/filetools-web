@@ -8,6 +8,10 @@ interface ExifData {
   [key: string]: string | number | undefined
 }
 
+interface ExifReader {
+  readFromBinaryFile(file: ArrayBuffer): Record<string, unknown> | null
+}
+
 export function ImageExifTool() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState("")
@@ -24,7 +28,7 @@ export function ImageExifTool() {
     setExifData(null)
 
     try {
-      const EXIF = (await import("exif-js")).default as any
+      const EXIF = (await import("exif-js")).default as ExifReader
       const reader = new FileReader()
       reader.onload = function () {
         const arrayBuffer = this.result as ArrayBuffer
