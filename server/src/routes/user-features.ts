@@ -32,7 +32,7 @@ router.post("/send-verification", requireAuth, async (req: Request, res: Respons
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
         body: JSON.stringify({
-          from: process.env.EMAIL_FROM || "CatConvert <noreply@convert.jtlcook.com>",
+          from: process.env.EMAIL_FROM || "CatConvert <noreply@cattools.jtlcook.com>",
           to: user.email,
           subject: "CatConvert 邮箱验证码",
           html: `<p>您的验证码是：<strong>${code}</strong></p><p>有效期 10 分钟。</p><p>如非本人操作，请忽略此邮件。</p>`,
