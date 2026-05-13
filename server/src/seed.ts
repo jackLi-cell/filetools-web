@@ -16,6 +16,41 @@ const categoryPaymentSeeds = [
   { category: "signature", name: "电子签名" },
 ]
 
+const creditPackageSeeds = [
+  {
+    id: 1,
+    name: "轻量包",
+    creditsAmount: 100,
+    priceCents: 990,
+    sortOrder: 10,
+    description: "适合偶尔处理文件，约 10 积分/元",
+  },
+  {
+    id: 2,
+    name: "常用包",
+    creditsAmount: 220,
+    priceCents: 1990,
+    sortOrder: 20,
+    description: "适合每周处理文件，含 20 赠送积分",
+  },
+  {
+    id: 3,
+    name: "高频包",
+    creditsAmount: 600,
+    priceCents: 4990,
+    sortOrder: 30,
+    description: "适合批量处理文件，含 100 赠送积分",
+  },
+  {
+    id: 4,
+    name: "专业包",
+    creditsAmount: 1300,
+    priceCents: 9990,
+    sortOrder: 40,
+    description: "适合长期高频使用，含 300 赠送积分",
+  },
+]
+
 const toolSeeds = [
   // 图片处理
   { toolSlug: "image-compress", name: "图片压缩", category: "image", isFree: true, creditsCost: 0, dailyFreeAnonymous: 0, dailyFreeRegistered: 0, maxFileSizeMb: 30, priority: 100, description: "调整质量和大小，支持批量压缩" },
@@ -98,8 +133,19 @@ async function seed() {
     })
   }
 
+  console.log("Seeding credit_packages...")
+
+  for (const pkg of creditPackageSeeds) {
+    await prisma.creditPackage.upsert({
+      where: { id: pkg.id },
+      update: { ...pkg, enabled: true },
+      create: { ...pkg, enabled: true },
+    })
+  }
+
   console.log(`Seeded ${toolSeeds.length} tools.`)
   console.log(`Seeded ${categoryPaymentSeeds.length} category payment settings.`)
+  console.log(`Seeded ${creditPackageSeeds.length} credit packages.`)
   await prisma.$disconnect()
 }
 
