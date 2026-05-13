@@ -75,7 +75,7 @@ export default function AccountPage() {
       </div>
 
       <Card className="p-5 mb-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-sm font-medium text-gray-900 mb-1">每日签到</h3>
             <p className="text-xs text-gray-500">每天签到送 5 积分，连续 7 天额外 +20 积分</p>
@@ -83,6 +83,18 @@ export default function AccountPage() {
             {checkinMsg && <p className="text-xs text-blue-600 mt-1">{checkinMsg}</p>}
           </div>
           <Button onClick={handleCheckin} disabled={checkinLoading}>{checkinLoading ? "签到中..." : "立即签到"}</Button>
+        </div>
+      </Card>
+
+      <Card className="p-5 mb-6 border-blue-200 bg-blue-50">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-blue-950 mb-1">积分充值</h3>
+            <p className="text-xs text-blue-700">基础比例约 1 元 = 10 积分，大额套餐含赠送积分。</p>
+          </div>
+          <Link href="/account/recharge">
+            <Button className="w-full sm:w-auto">去充值</Button>
+          </Link>
         </div>
       </Card>
 

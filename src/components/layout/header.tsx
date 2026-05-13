@@ -42,6 +42,7 @@ export function Header() {
                 <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">{user.credits} 积分</span>
                 <span>{user.name || user.email}</span>
               </Link>
+              <Link href="/account/recharge"><Button variant="outline" size="sm">充值</Button></Link>
               <Button variant="ghost" size="sm" onClick={logout}>退出</Button>
             </>
           ) : (
@@ -70,6 +71,9 @@ export function Header() {
                   <>
                     <Link href="/account" onClick={() => setOpen(false)}>
                       <Button variant="outline" className="w-full">个人中心（{user.credits} 积分）</Button>
+                    </Link>
+                    <Link href="/account/recharge" onClick={() => setOpen(false)}>
+                      <Button className="w-full">积分充值</Button>
                     </Link>
                     <Button variant="ghost" onClick={() => { logout(); setOpen(false) }}>退出登录</Button>
                   </>

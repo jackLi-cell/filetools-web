@@ -56,13 +56,14 @@ export default function PricingPage() {
             <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xs flex-shrink-0">充</div>
             <div>
               <p className="font-medium text-gray-900">积分充值</p>
-              <p className="text-xs text-gray-500 mt-0.5">支付宝/微信支付即将开放</p>
+              <p className="text-xs text-gray-500 mt-0.5">约 1 元 = 10 积分，大额套餐含赠送积分</p>
             </div>
           </div>
         </div>
-        <div className="mt-5 flex gap-2">
+        <div className="mt-5 flex flex-wrap gap-2">
           <Link href="/register"><Button size="sm">立即注册领取</Button></Link>
           <Link href="/login"><Button size="sm" variant="outline">登录签到</Button></Link>
+          <Link href="/account/recharge"><Button size="sm" variant="outline">积分充值</Button></Link>
         </div>
       </Card>
 
@@ -130,7 +131,7 @@ export default function PricingPage() {
         <ul className="text-xs text-gray-600 space-y-1">
           <li>✓ 处理失败自动退还积分</li>
           <li>✓ 赠送积分 90 天有效期</li>
-          <li>✓ 充值积分永不过期（后续开通充值时）</li>
+          <li>✓ 充值积分长期有效</li>
           <li>✓ 文件处理完成后立即从服务器删除</li>
           <li>✓ 结果文件 2 小时后自动清理</li>
         </ul>
