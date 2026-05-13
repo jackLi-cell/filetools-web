@@ -3,7 +3,8 @@ import { Metadata } from "next"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { tools, categories } from "@/config/tools"
+import { tools } from "@/config/tools"
+import { applyCategoryPaymentSettings } from "@/lib/payment-settings"
 
 export const metadata: Metadata = {
   title: "定价说明 - 工具积分消耗",
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 }
 
 export default function PricingPage() {
-  const v01Tools = tools.filter(t => t.version === "v0.1")
+  const v01Tools = applyCategoryPaymentSettings(tools.filter(t => t.version === "v0.1"))
   const freeTools = v01Tools.filter(t => t.isFree)
   const paidTools = v01Tools.filter(t => !t.isFree)
 

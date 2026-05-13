@@ -3,6 +3,7 @@ import { Metadata } from "next"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { categories, tools } from "@/config/tools"
+import { applyCategoryPaymentSettings } from "@/lib/payment-settings"
 
 export const metadata: Metadata = {
   title: "全部工具 - 50+ 在线文件处理工具",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 }
 
 export default function AllToolsPage() {
-  const v01Tools = tools.filter(t => t.version === "v0.1")
+  const v01Tools = applyCategoryPaymentSettings(tools.filter(t => t.version === "v0.1"))
 
   return (
     <div className="container mx-auto px-4 py-8 md:py-12 max-w-6xl">

@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client"
 import { requireAdmin } from "../middleware/auth.js"
 import { redis } from "../config/redis.js"
 import { processQueue } from "../config/queue.js"
+import { ensureCategoryPaymentSettings } from "../services/category-payment.js"
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -134,6 +135,38 @@ router.put("/users/:id/status", async (req: Request, res: Response) => {
 router.get("/tools-config", async (_req: Request, res: Response) => {
   const tools = await prisma.toolConfig.findMany({ orderBy: [{ category: "asc" }, { priority: "desc" }] })
   res.json({ code: 0, data: tools })
+})
+
+router.get("/category-payment-settings", async (_req: Request, res: Response) => {
+  await ensureCategoryPaymentSettings(prisma)
+  const settings = await prisma.categoryPaymentSetting.findMany({ orderBy: { category: "asc" } })
+  res.json({ code: 0, data: settings })
+})
+
+router.put("/category-payment-settings/:category", async (req: Request, res: Response) => {
+  const category = req.params.category as string
+  const { paidEnabled } = req.body as { paidEnabled?: boolean }
+
+  if (typeof paidEnabled !== "boolean") {
+    res.status(400).json({ code: 400, message: "paidEnabled must be boolean" })
+    return
+  }
+
+  const setting = await prisma.categoryPaymentSetting.findUnique({ where: { category } })
+  if (!setting) {
+    res.status(404).json({ code: 404, message: "Category payment setting not found" })
+    return
+  }
+
+  await prisma.categoryPaymentSetting.update({
+    where: { category },
+    data: { paidEnabled, updatedBy: (req as any).userId },
+  })
+
+  await redis.del("tools:category-payment-settings")
+  await redis.del("tools:list")
+
+  res.json({ code: 0, message: "妯″潡浠樿垂寮€鍏冲凡鏇存柊" })
 })
 
 router.put("/tools-config/:slug", async (req: Request, res: Response) => {

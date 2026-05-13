@@ -23,10 +23,18 @@ interface ToolConfig {
   maxFileSizeMb: number
 }
 
+interface CategoryPaymentSetting {
+  id: number
+  category: string
+  name: string
+  paidEnabled: boolean
+}
+
 export default function AdminToolsPage() {
   const router = useRouter()
   const { user, loading } = useAuth()
   const [tools, setTools] = useState<ToolConfig[]>([])
+  const [categoryPaymentSettings, setCategoryPaymentSettings] = useState<CategoryPaymentSetting[]>([])
   const [editing, setEditing] = useState<Record<string, Partial<ToolConfig>>>({})
 
   useEffect(() => {
@@ -39,7 +47,18 @@ export default function AdminToolsPage() {
     })
   }
 
-  useEffect(() => { if (user?.role === "admin") fetchTools() }, [user])
+  const fetchCategoryPaymentSettings = () => {
+    api.get<CategoryPaymentSetting[]>("/api/admin/category-payment-settings").then(res => {
+      if (res.code === 0 && res.data) setCategoryPaymentSettings(res.data)
+    })
+  }
+
+  useEffect(() => {
+    if (user?.role === "admin") {
+      fetchTools()
+      fetchCategoryPaymentSettings()
+    }
+  }, [user])
 
   const updateField = (slug: string, field: keyof ToolConfig, value: unknown) => {
     setEditing(prev => ({ ...prev, [slug]: { ...prev[slug], [field]: value } }))
@@ -54,6 +73,21 @@ export default function AdminToolsPage() {
       fetchTools()
     } else {
       alert(res.message)
+    }
+  }
+
+  const updateCategoryPaymentSetting = async (category: string, paidEnabled: boolean) => {
+    const previous = categoryPaymentSettings
+    setCategoryPaymentSettings(prev => prev.map(setting => (
+      setting.category === category ? { ...setting, paidEnabled } : setting
+    )))
+
+    const res = await api.put(`/api/admin/category-payment-settings/${category}`, { paidEnabled })
+    if (res.code !== 0) {
+      setCategoryPaymentSettings(previous)
+      alert(res.message)
+    } else {
+      fetchCategoryPaymentSettings()
     }
   }
 
@@ -75,6 +109,36 @@ export default function AdminToolsPage() {
       </div>
       <h1 className="text-2xl font-bold text-gray-900 mb-2">工具配置</h1>
       <p className="text-sm text-gray-500 mb-6">调整后立即生效（缓存 60 秒后刷新）</p>
+
+      <Card className="p-5 mb-8">
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-gray-900">模块付费开关</h2>
+          <p className="text-xs text-gray-500 mt-1">默认关闭。关闭后该模块所有工具按免费处理，前端不显示积分，后端也不记录积分消耗。</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {categoryPaymentSettings.map(setting => (
+            <div key={setting.category} className="rounded border border-gray-200 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{setting.name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{setting.category}</p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={setting.paidEnabled}
+                    onChange={(e) => updateCategoryPaymentSetting(setting.category, e.target.checked)}
+                  />
+                  收费
+                </label>
+              </div>
+              <Badge className={setting.paidEnabled ? "mt-3 bg-blue-50 text-blue-700 border-blue-200" : "mt-3 bg-green-50 text-green-700 border-green-200"}>
+                {setting.paidEnabled ? "按工具积分收费" : "免费模式"}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       {categories.map(category => (
         <div key={category} className="mb-8">

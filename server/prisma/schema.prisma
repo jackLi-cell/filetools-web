@@ -114,6 +114,17 @@ model ToolConfig {
   @@map("tool_configs")
 }
 
+model CategoryPaymentSetting {
+  id          Int      @id @default(autoincrement())
+  category    String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  paidEnabled Boolean  @default(false) @map("paid_enabled")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedBy   Int?     @map("updated_by")
+
+  @@map("category_payment_settings")
+}
+
 model DailyStat {
   id              Int      @id @default(autoincrement())
   date            DateTime @unique @db.Date

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
+import { CategoryPaymentSetting } from "@/lib/payment-settings"
 
 interface ServerToolProps {
   toolSlug: string
@@ -29,11 +30,48 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
   const [uploading, setUploading] = useState(false)
   const [task, setTask] = useState<TaskResult | null>(null)
   const [error, setError] = useState("")
+  const [effectiveCreditsCost, setEffectiveCreditsCost] = useState(0)
+  const [effectiveLimitedFree, setEffectiveLimitedFree] = useState(false)
   const [params, setParams] = useState<Record<string, unknown>>(() => {
     const defaults: Record<string, unknown> = {}
     paramsSchema.forEach(p => { if (p.default !== undefined) defaults[p.name] = p.default })
     return defaults
   })
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchPaymentSetting() {
+      try {
+        const [toolRes, settingsRes] = await Promise.all([
+          api.get<{ category: string; isFree: boolean; creditsCost: number }>(`/api/tools/${toolSlug}`),
+          api.get<CategoryPaymentSetting[]>("/api/tools/category-payment-settings"),
+        ])
+
+        if (cancelled) return
+
+        const category = toolRes.data?.category
+        const paidEnabled = settingsRes.data?.find((setting) => setting.category === category)?.paidEnabled === true
+        const nextCreditsCost = paidEnabled && !toolRes.data?.isFree
+          ? (toolRes.data?.creditsCost ?? creditsCost)
+          : 0
+
+        setEffectiveCreditsCost(nextCreditsCost)
+        setEffectiveLimitedFree(paidEnabled && nextCreditsCost > 0 ? isLimitedFree : false)
+      } catch {
+        if (!cancelled) {
+          setEffectiveCreditsCost(0)
+          setEffectiveLimitedFree(false)
+        }
+      }
+    }
+
+    fetchPaymentSetting()
+
+    return () => {
+      cancelled = true
+    }
+  }, [creditsCost, isLimitedFree, toolSlug])
 
   const handleFile = useCallback((f: File | null) => {
     if (!f) return
@@ -119,8 +157,8 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
 
   const formatSize = (bytes: number) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`
 
-  const needLogin = !isLimitedFree && creditsCost > 0 && !user
-  const insufficientCredits = user && creditsCost > 0 && user.credits < creditsCost
+  const needLogin = !effectiveLimitedFree && effectiveCreditsCost > 0 && !user
+  const insufficientCredits = user && effectiveCreditsCost > 0 && user.credits < effectiveCreditsCost
 
   return (
     <div className="space-y-6">
@@ -179,9 +217,9 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
       {file && !task && (
         <>
           {needLogin && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 该工具需要登录后使用</div>}
-          {insufficientCredits && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 积分不足（需要 {creditsCost} 积分，当前 {user!.credits}）</div>}
+          {insufficientCredits && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 积分不足（需要 {effectiveCreditsCost} 积分，当前 {user!.credits}）</div>}
           <Button onClick={submit} disabled={uploading || needLogin || !!insufficientCredits} className="w-full">
-            {uploading ? "上传中..." : creditsCost > 0 && !isLimitedFree ? `开始处理（消耗 ${creditsCost} 积分）` : "开始处理"}
+            {uploading ? "上传中..." : effectiveCreditsCost > 0 && !effectiveLimitedFree ? `开始处理（消耗 ${effectiveCreditsCost} 积分）` : "开始处理"}
           </Button>
         </>
       )}

@@ -66,13 +66,19 @@ router.post("/:toolSlug", async (req: Request, res: Response) => {
   }
 
   const ip = (req.ip || "unknown") as string
+  const categoryPaymentSetting = await prisma.categoryPaymentSetting.findUnique({
+    where: { category: tool.category },
+  })
+  const paidEnabled = categoryPaymentSetting?.paidEnabled === true
+  const effectiveCreditsCost = paidEnabled && !tool.isFree ? tool.creditsCost : 0
+  const effectiveDailyFreeAnonymous = paidEnabled ? tool.dailyFreeAnonymous : 0
 
-  if (!tool.isFree && tool.dailyFreeAnonymous > 0) {
+  if (effectiveCreditsCost > 0 && effectiveDailyFreeAnonymous > 0) {
     const usageKey = `usage:anon:${ip}:${toolSlug}:${new Date().toISOString().slice(0, 10)}`
     const used = await redis.incr(usageKey)
     if (used === 1) await redis.expire(usageKey, 86400)
-    if (used > tool.dailyFreeAnonymous) {
-      res.status(403).json({ code: 403, message: `今日免费次数已用完（${tool.dailyFreeAnonymous} 次/天），请注册登录获取更多次数` })
+    if (used > effectiveDailyFreeAnonymous) {
+      res.status(403).json({ code: 403, message: `今日免费次数已用完（${effectiveDailyFreeAnonymous} 次/天），请注册登录获取更多次数` })
       return
     }
   }
@@ -89,6 +95,7 @@ router.post("/:toolSlug", async (req: Request, res: Response) => {
       inputFileName: parsed.data.fileName,
       inputFileSize: BigInt(parsed.data.fileSize),
       params: parsed.data.params as any || undefined,
+      creditsCost: effectiveCreditsCost,
       ipAddress: ip,
       expiresAt,
     },

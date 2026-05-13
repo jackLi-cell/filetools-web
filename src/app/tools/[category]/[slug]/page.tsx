@@ -7,12 +7,14 @@ import { tools, getToolBySlug, getCategoryBySlug } from "@/config/tools"
 import { getToolSeo } from "@/config/seo"
 import { siteConfig } from "@/config/site"
 import { ToolRenderer } from "@/components/tools/tool-renderer"
+import { applyCategoryPaymentSettings, applyCategoryPaymentSetting } from "@/lib/payment-settings"
 
 export const runtime = "edge"
 
 export async function generateMetadata({ params }: { params: Promise<{ category: string; slug: string }> }): Promise<Metadata> {
   const { slug } = await params
-  const tool = getToolBySlug(slug)
+  const rawTool = getToolBySlug(slug)
+  const tool = rawTool ? applyCategoryPaymentSetting(rawTool) : undefined
   const seo = getToolSeo(slug)
 
   if (!tool) return {}
@@ -41,9 +43,9 @@ export default async function ToolPage({ params }: { params: Promise<{ category:
 
   if (!tool || !category) notFound()
 
-  const relatedTools = tools
+  const relatedTools = applyCategoryPaymentSettings(tools
     .filter(t => t.category === tool.category && t.slug !== tool.slug && t.version === "v0.1")
-    .slice(0, 4)
+    .slice(0, 4))
 
   const faqSchema = seo?.faq && seo.faq.length > 0 ? {
     "@context": "https://schema.org",

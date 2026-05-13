@@ -2,6 +2,20 @@ import { PrismaClient } from "@prisma/client"
 
 const prisma = new PrismaClient()
 
+const categoryPaymentSeeds = [
+  { category: "image", name: "图片处理" },
+  { category: "pdf", name: "PDF 工具" },
+  { category: "convert", name: "文档转换" },
+  { category: "video", name: "视频处理" },
+  { category: "audio", name: "音频处理" },
+  { category: "markdown", name: "Markdown" },
+  { category: "dev", name: "开发者工具" },
+  { category: "qrcode", name: "二维码工具" },
+  { category: "text", name: "文本工具" },
+  { category: "security", name: "文件安全" },
+  { category: "signature", name: "电子签名" },
+]
+
 const toolSeeds = [
   // 图片处理
   { toolSlug: "image-compress", name: "图片压缩", category: "image", isFree: true, creditsCost: 0, dailyFreeAnonymous: 0, dailyFreeRegistered: 0, maxFileSizeMb: 30, priority: 100, description: "调整质量和大小，支持批量压缩" },
@@ -64,6 +78,16 @@ const toolSeeds = [
 ]
 
 async function seed() {
+  console.log("Seeding category_payment_settings...")
+
+  for (const category of categoryPaymentSeeds) {
+    await prisma.categoryPaymentSetting.upsert({
+      where: { category: category.category },
+      update: { name: category.name },
+      create: { ...category, paidEnabled: false },
+    })
+  }
+
   console.log("Seeding tool_configs...")
 
   for (const tool of toolSeeds) {
@@ -75,6 +99,7 @@ async function seed() {
   }
 
   console.log(`Seeded ${toolSeeds.length} tools.`)
+  console.log(`Seeded ${categoryPaymentSeeds.length} category payment settings.`)
   await prisma.$disconnect()
 }
 

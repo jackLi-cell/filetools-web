@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { categories, tools } from "@/config/tools"
+import { applyCategoryPaymentSettings } from "@/lib/payment-settings"
 
 export function generateStaticParams() {
   return categories.map((cat) => ({ category: cat.slug }))
@@ -38,7 +39,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ categ
   const category = categories.find(c => c.slug === categorySlug)
   if (!category) notFound()
 
-  const categoryTools = tools.filter(t => t.category === categorySlug && t.version === "v0.1")
+  const categoryTools = applyCategoryPaymentSettings(tools.filter(t => t.category === categorySlug && t.version === "v0.1"))
 
   return (
     <div className="container mx-auto px-4 py-8 md:py-12">
