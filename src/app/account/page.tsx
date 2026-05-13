@@ -15,8 +15,19 @@ interface Profile {
   credits: number
   totalEarned: number
   totalSpent: number
+  lastCheckinDate: string | null
   consecutiveCheckin: number
   createdAt: string
+}
+
+function toDateKey(value: Date | string) {
+  const date = typeof value === "string" ? new Date(value) : value
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date)
 }
 
 export default function AccountPage() {
@@ -49,11 +60,19 @@ export default function AccountPage() {
       if (updated.code === 0 && updated.data) setProfile(updated.data)
     } else {
       setCheckinMsg(res.message || "签到失败")
+      if (res.message === "今日已签到") {
+        const updated = await api.get<Profile>("/api/account/profile")
+        if (updated.code === 0 && updated.data) setProfile(updated.data)
+      }
     }
     setCheckinLoading(false)
   }
 
   if (loading || !profile) return <div className="container mx-auto px-4 py-10">加载中...</div>
+
+  const hasCheckedInToday = profile.lastCheckinDate
+    ? toDateKey(profile.lastCheckinDate) === toDateKey(new Date())
+    : false
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -80,9 +99,12 @@ export default function AccountPage() {
             <h3 className="text-sm font-medium text-gray-900 mb-1">每日签到</h3>
             <p className="text-xs text-gray-500">每天签到送 5 积分，连续 7 天额外 +20 积分</p>
             {profile.consecutiveCheckin > 0 && <p className="text-xs text-green-600 mt-1">已连续签到 {profile.consecutiveCheckin} 天</p>}
+            {hasCheckedInToday && !checkinMsg && <p className="text-xs text-blue-600 mt-1">今日已签到</p>}
             {checkinMsg && <p className="text-xs text-blue-600 mt-1">{checkinMsg}</p>}
           </div>
-          <Button onClick={handleCheckin} disabled={checkinLoading}>{checkinLoading ? "签到中..." : "立即签到"}</Button>
+          <Button onClick={handleCheckin} disabled={checkinLoading || hasCheckedInToday}>
+            {checkinLoading ? "签到中..." : hasCheckedInToday ? "今日已签到" : "立即签到"}
+          </Button>
         </div>
       </Card>
 

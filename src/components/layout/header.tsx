@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -16,6 +17,12 @@ const navLinks = [
 export function Header() {
   const [open, setOpen] = useState(false)
   const { user, loading, logout } = useAuth()
+  const pathname = usePathname()
+
+  const isActive = (href: string) => {
+    if (href === "/") return pathname === "/"
+    return pathname === href || pathname.startsWith(`${href}/`)
+  }
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
@@ -29,7 +36,15 @@ export function Header() {
 
         <nav className="hidden md:flex items-center gap-6">
           {navLinks.map((link) => (
-            <Link key={link.href} href={link.href} className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`rounded-md px-3 py-2 text-sm transition-colors ${
+                isActive(link.href)
+                  ? "bg-blue-50 font-medium text-blue-700"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
               {link.label}
             </Link>
           ))}
@@ -62,7 +77,16 @@ export function Header() {
           <SheetContent side="right" className="w-[280px]">
             <nav className="flex flex-col gap-4 mt-8">
               {navLinks.map((link) => (
-                <Link key={link.href} href={link.href} className="text-base text-gray-700 hover:text-gray-900 py-2" onClick={() => setOpen(false)}>
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`rounded-md px-3 py-2 text-base transition-colors ${
+                    isActive(link.href)
+                      ? "bg-blue-50 font-medium text-blue-700"
+                      : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                  }`}
+                  onClick={() => setOpen(false)}
+                >
                   {link.label}
                 </Link>
               ))}
