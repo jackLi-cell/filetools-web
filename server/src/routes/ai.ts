@@ -120,12 +120,17 @@ router.post("/chat", softAuth, checkAiEnabled, aiRateLimit, async (req: Request,
   } catch (err) {
     await release()
     if (err instanceof AllUpstreamsFailedError) {
-      console.warn("[ai/chat] all upstreams failed:", err.attempts)
+      console.warn("[ai/chat] all upstreams failed:", JSON.stringify(err.attempts))
       if (!res.headersSent) {
-        res.status(503).json({
+        const debugMode = process.env.AI_DEBUG_ERRORS === "true"
+        const body: Record<string, unknown> = {
           code: 503,
           message: "AI 助手暂时不可用，请稍后重试",
-        })
+        }
+        if (debugMode) {
+          body.attempts = err.attempts
+        }
+        res.status(503).json(body)
       }
       return
     }

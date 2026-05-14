@@ -185,6 +185,56 @@ function estimateMessageChars(m: CoreMessage): number {
 }
 
 /**
+ * 提取错误对象上的细节字段（Vercel AI SDK / OpenAI provider 错误通常带这些）
+ */
+function describeError(err: unknown): {
+  name?: string
+  message: string
+  status?: number
+  url?: string
+  responseBody?: string
+  cause?: string
+} {
+  if (err == null) return { message: "unknown" }
+  if (typeof err === "string") return { message: err }
+  if (!(err instanceof Error) && typeof err === "object") {
+    return { message: JSON.stringify(err).slice(0, 800) }
+  }
+  const e = err as Error & {
+    statusCode?: number
+    status?: number
+    url?: string
+    responseBody?: unknown
+    cause?: unknown
+  }
+  const out: ReturnType<typeof describeError> = {
+    name: e.name,
+    message: e.message || String(e),
+  }
+  if (typeof e.statusCode === "number") out.status = e.statusCode
+  else if (typeof e.status === "number") out.status = e.status
+  if (typeof e.url === "string") out.url = e.url
+  if (e.responseBody !== undefined) {
+    try {
+      out.responseBody =
+        typeof e.responseBody === "string"
+          ? e.responseBody.slice(0, 1500)
+          : JSON.stringify(e.responseBody).slice(0, 1500)
+    } catch {
+      out.responseBody = "(unserializable)"
+    }
+  }
+  if (e.cause) {
+    try {
+      out.cause = e.cause instanceof Error ? `${e.cause.name}: ${e.cause.message}` : String(e.cause).slice(0, 400)
+    } catch {
+      /* ignore */
+    }
+  }
+  return out
+}
+
+/**
  * 流式聊天：按 priority 依次尝试上游，遇到失败 markFail 后试下一个。
  * 全部失败抛 AllUpstreamsFailedError。
  *
@@ -198,12 +248,19 @@ export async function streamChat(
 
   const upstreams = await getUpstreams()
   if (upstreams.length === 0) {
+    console.warn("[ai-service] streamChat called but no upstreams configured")
     throw new AllUpstreamsFailedError([{ name: "(none)", error: "未配置任何 AI 上游" }])
   }
 
   const candidates = upstreams
     .filter((u) => u.enabled)
     .sort((a, b) => a.priority - b.priority)
+
+  console.log(
+    `[ai-service] streamChat start: userId=${userId ?? "anon"}, messages=${messages.length}, ` +
+      `attachments=${attachmentIds?.length ?? 0}, candidates=${candidates.length} ` +
+      `(${candidates.map((u) => `${u.name}@${u.priority}`).join(", ")})`,
+  )
 
   const baseSystemPrompt = await getSystemPrompt()
 
@@ -225,6 +282,10 @@ export async function streamChat(
 
   for (const upstream of candidates) {
     if (isInCooldown(upstream)) {
+      console.warn(
+        `[ai-service] upstream "${upstream.name}" in cooldown ` +
+          `(failCount=${upstream.failCount}, lastError=${upstream.lastError ?? "-"})`,
+      )
       attempts.push({ name: upstream.name, error: "cooldown" })
       continue
     }
@@ -242,6 +303,10 @@ export async function streamChat(
       result.usage
         .then((usage) => {
           const durationMs = Date.now() - startedAt
+          console.log(
+            `[ai-service] upstream "${upstream.name}" stream done: ` +
+              `dur=${durationMs}ms, prompt=${usage.promptTokens ?? 0}, completion=${usage.completionTokens ?? 0}`,
+          )
           void markSuccess(upstream.id).catch((e) => {
             console.warn("[ai-service] markSuccess failed:", e)
           })
@@ -257,6 +322,12 @@ export async function streamChat(
         })
         .catch((err) => {
           const durationMs = Date.now() - startedAt
+          const detail = describeError(err)
+          console.error(
+            `[ai-service] upstream "${upstream.name}" stream FAILED after pipe started: ` +
+              `dur=${durationMs}ms, status=${detail.status ?? "-"}, msg=${detail.message}, ` +
+              `body=${detail.responseBody ?? "-"}`,
+          )
           void markFail(upstream.id, err).catch((e) => {
             console.warn("[ai-service] markFail failed:", e)
           })
@@ -273,8 +344,19 @@ export async function streamChat(
 
       return result
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      attempts.push({ name: upstream.name, error: message })
+      const detail = describeError(err)
+      console.error(
+        `[ai-service] upstream "${upstream.name}" call FAILED before stream: ` +
+          `status=${detail.status ?? "-"}, msg=${detail.message}, ` +
+          `url=${detail.url ?? "-"}, body=${detail.responseBody ?? "-"}, ` +
+          `cause=${detail.cause ?? "-"}`,
+      )
+      attempts.push({
+        name: upstream.name,
+        error: detail.responseBody
+          ? `${detail.message} | upstream said: ${detail.responseBody.slice(0, 300)}`
+          : detail.message,
+      })
       const durationMs = Date.now() - startedAt
       try {
         await markFail(upstream.id, err)
@@ -293,6 +375,9 @@ export async function streamChat(
     }
   }
 
+  console.error(
+    `[ai-service] all ${candidates.length} upstreams failed: ${JSON.stringify(attempts)}`,
+  )
   throw new AllUpstreamsFailedError(attempts)
 }
 
@@ -389,6 +474,22 @@ async function tryStream(opts: {
 }): Promise<StreamTextResult<ToolSet, never>> {
   const { upstream, systemPrompt, messages, abortSignal } = opts
 
+  // 入参摘要（API key 脱敏）
+  const lastUser = messages.slice().reverse().find((m) => m.role === "user")
+  const lastUserText =
+    lastUser && typeof lastUser.content === "string"
+      ? lastUser.content.slice(0, 200)
+      : "(non-text content)"
+  const apiKeyMasked = upstream.apiKey
+    ? `${upstream.apiKey.slice(0, 6)}...${upstream.apiKey.slice(-4)}`
+    : "(empty)"
+  console.log(
+    `[ai-service] -> upstream "${upstream.name}" ` +
+      `baseUrl=${upstream.baseUrl} model=${upstream.model} apiKey=${apiKeyMasked} ` +
+      `systemLen=${systemPrompt.length} msgs=${messages.length} maxTokens=${env.ai.maxOutputTokens} ` +
+      `lastUser="${lastUserText.replace(/\n/g, "\\n")}"`,
+  )
+
   const provider = createOpenAI({
     baseURL: upstream.baseUrl,
     apiKey: upstream.apiKey,
@@ -405,6 +506,15 @@ async function tryStream(opts: {
     // 工具调用需要更稳定的输出，从 0.7 降到 0.5
     temperature: 0.5,
     abortSignal,
+    onError: ({ error }) => {
+      const detail = describeError(error)
+      console.error(
+        `[ai-service] streamText onError "${upstream.name}": ` +
+          `status=${detail.status ?? "-"}, msg=${detail.message}, ` +
+          `url=${detail.url ?? "-"}, body=${detail.responseBody ?? "-"}, ` +
+          `cause=${detail.cause ?? "-"}`,
+      )
+    },
   })
 
   return result
@@ -420,6 +530,12 @@ export async function testUpstream(opts: {
   model: string
 }): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
   const startedAt = Date.now()
+  const apiKeyMasked = opts.apiKey
+    ? `${opts.apiKey.slice(0, 6)}...${opts.apiKey.slice(-4)}`
+    : "(empty)"
+  console.log(
+    `[ai-service] testUpstream -> baseUrl=${opts.baseUrl} model=${opts.model} apiKey=${apiKeyMasked}`,
+  )
   try {
     const provider = createOpenAI({
       baseURL: opts.baseUrl,
@@ -433,14 +549,33 @@ export async function testUpstream(opts: {
       messages: [{ role: "user", content: "ping" }],
       maxTokens: 5,
       temperature: 0,
+      onError: ({ error }) => {
+        const detail = describeError(error)
+        console.error(
+          `[ai-service] testUpstream streamText onError: ` +
+            `status=${detail.status ?? "-"}, msg=${detail.message}, ` +
+            `body=${detail.responseBody ?? "-"}`,
+        )
+      },
     })
     await result.usage
-    return { ok: true, latencyMs: Date.now() - startedAt }
+    const latencyMs = Date.now() - startedAt
+    console.log(`[ai-service] testUpstream OK: ${latencyMs}ms`)
+    return { ok: true, latencyMs }
   } catch (e) {
+    const detail = describeError(e)
+    const latencyMs = Date.now() - startedAt
+    console.error(
+      `[ai-service] testUpstream FAILED: ${latencyMs}ms, ` +
+        `status=${detail.status ?? "-"}, msg=${detail.message}, ` +
+        `body=${detail.responseBody ?? "-"}`,
+    )
     return {
       ok: false,
-      latencyMs: Date.now() - startedAt,
-      error: e instanceof Error ? e.message : String(e),
+      latencyMs,
+      error: detail.responseBody
+        ? `${detail.message} | upstream said: ${detail.responseBody.slice(0, 300)}`
+        : detail.message,
     }
   }
 }
