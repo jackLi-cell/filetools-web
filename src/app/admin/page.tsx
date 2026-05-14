@@ -103,6 +103,12 @@ export default function AdminPage() {
             <p className="text-xs text-gray-500">流量、工具使用、积分收支</p>
           </Card>
         </Link>
+        <Link href="/admin/ai">
+          <Card className="p-5 hover:shadow-md transition-shadow cursor-pointer">
+            <h3 className="text-sm font-medium text-gray-900 mb-1">AI 助手</h3>
+            <p className="text-xs text-gray-500">管理 AI 上游、全局开关、用量统计</p>
+          </Card>
+        </Link>
       </div>
     </div>
   )

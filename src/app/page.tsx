@@ -2,24 +2,24 @@ import Link from "next/link"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { categories, tools } from "@/config/tools"
-import { ToolSearch } from "@/components/tool-search"
+import { AiHero } from "@/components/ai/ai-hero"
 
 const popularTools = tools.filter(t => t.version === "v0.1").slice(0, 8)
 
 export default function HomePage() {
   return (
     <div className="flex flex-col">
-      <section className="border-b bg-gradient-to-b from-blue-50/50 to-white py-16 md:py-24">
-        <div className="container mx-auto px-4 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            灵猫转换 · 在线文件处理工具箱
-          </h1>
-          <p className="text-base text-gray-600 mb-8 max-w-xl mx-auto">
-            图片压缩、PDF 转换、Office 文档转换、视频处理等 50+ 实用工具，大部分在浏览器本地处理，文件不上传服务器。
-          </p>
-          <div className="max-w-md mx-auto">
-            <ToolSearch />
+      <section className="border-b bg-gradient-to-b from-blue-50/50 to-white py-12 md:py-20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-8 md:mb-10">
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
+              灵猫助手 · 告诉我你要做什么
+            </h1>
+            <p className="text-base text-gray-600 max-w-xl mx-auto">
+              上传文件、提问、或要求转换 — 我会自动选择合适的工具
+            </p>
           </div>
+          <AiHero />
         </div>
       </section>
 

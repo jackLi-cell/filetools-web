@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { siteConfig } from "@/config/site"
 import { useAuth } from "@/lib/auth-context"
+import { HeaderToolSearch, MobileToolSearchTrigger } from "@/components/header-tool-search"
 
 const navLinks = [
   { href: "/", label: "首页" },
@@ -51,6 +52,7 @@ export function Header() {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
+          <HeaderToolSearch />
           {loading ? null : user ? (
             <>
               <Link href="/account" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-2">
@@ -76,6 +78,7 @@ export function Header() {
           </SheetTrigger>
           <SheetContent side="right" className="w-[280px]">
             <nav className="flex flex-col gap-4 mt-8">
+              <MobileToolSearchTrigger onClose={() => setOpen(false)} />
               {navLinks.map((link) => (
                 <Link
                   key={link.href}

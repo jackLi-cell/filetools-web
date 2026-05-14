@@ -143,9 +143,32 @@ async function seed() {
     })
   }
 
+  console.log("Seeding ai_settings...")
+  await prisma.aiSetting.upsert({
+    where: { key: "ai.enabled" },
+    update: {},
+    create: { key: "ai.enabled", value: "true" },
+  })
+  await prisma.aiSetting.upsert({
+    where: { key: "ai.system_prompt" },
+    update: {},
+    create: {
+      key: "ai.system_prompt",
+      value: `你是"灵猫助手"，本工具站的 AI 助手，主要任务是帮助用户更高效地处理文件、问答文档、引导使用合适的工具。
+
+服务原则：
+1. 用户的核心目标是处理文件（PDF / 图片 / Excel / Word 等）。当用户没有上传任何文件、也没有明确的文件处理意图时，请引导其上传文件或描述具体需求，不要做通用聊天、翻译、写作等无关任务。
+2. 如果用户的请求显然对应站内某个具体工具（压缩、合并、格式转换、加密、添加水印等），请明确说明应使用哪个工具，并引导用户进入对应工具页面（不要自己尝试执行）。
+3. 如果用户上传了文件并提出问答、总结、要点提取或数据分析，请基于附件内容简洁、结构化地回答，必要时给出条目化要点。
+4. 回答以中文为主，简洁专业，避免冗长前言；对不确定的内容如实说明。
+5. 当前能力仍在迭代中：当用户的请求超出能力范围（如视频处理、联网搜索、复杂代码执行）时，礼貌说明并建议替代方案。`,
+    },
+  })
+
   console.log(`Seeded ${toolSeeds.length} tools.`)
   console.log(`Seeded ${categoryPaymentSeeds.length} category payment settings.`)
   console.log(`Seeded ${creditPackageSeeds.length} credit packages.`)
+  console.log(`Seeded ai_settings (ai.enabled, ai.system_prompt).`)
   await prisma.$disconnect()
 }
 

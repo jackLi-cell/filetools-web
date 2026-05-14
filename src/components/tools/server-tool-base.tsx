@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { CategoryPaymentSetting } from "@/lib/payment-settings"
+import { consumePrefill, fetchAttachmentBlob } from "@/lib/ai-client"
 
 interface ServerToolProps {
   toolSlug: string
@@ -83,6 +84,37 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
     setTask(null)
     setError("")
   }, [maxSizeMb])
+
+  // AI prefill: when navigated from灵猫助手 with `?prefill=1`, pull the previously
+  // uploaded attachment back into this tool and apply suggested params.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const search = new URLSearchParams(window.location.search)
+    if (!search.has("prefill")) return
+    const data = consumePrefill(toolSlug)
+    if (!data) return
+
+    if (data.params && typeof data.params === "object") {
+      setParams((prev) => ({ ...prev, ...(data.params as Record<string, unknown>) }))
+    }
+
+    if (data.attachmentId && data.signedToken) {
+      fetchAttachmentBlob(data.attachmentId, data.signedToken)
+        .then(({ blob, name }) => {
+          const fileName = data.fileName || name || "attachment"
+          const file = new File([blob], fileName, {
+            type: blob.type || "application/octet-stream",
+          })
+          handleFile(file)
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : "未知错误"
+          setError(`无法加载 AI 助手附件：${msg}`)
+        })
+    }
+    // toolSlug is stable for the page; only consume once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolSlug])
 
   const submit = async () => {
     if (!file) return

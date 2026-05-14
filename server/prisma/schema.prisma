@@ -189,3 +189,52 @@ model CreditPackage {
 
   @@map("credit_packages")
 }
+
+// ============================================================
+// 灵猫 AI 助手
+// ============================================================
+
+model AiUpstream {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(50)
+  baseUrl     String    @map("base_url") @db.VarChar(500)
+  apiKeyEnc   String    @map("api_key_enc") @db.Text
+  model       String    @db.VarChar(100)
+  visionModel String?   @map("vision_model") @db.VarChar(100)
+  priority    Int       @default(100)
+  enabled     Boolean   @default(true)
+  healthyAt   DateTime? @map("healthy_at")
+  lastError   String?   @map("last_error") @db.VarChar(500)
+  failCount   Int       @default(0) @map("fail_count")
+  totalCalls  Int       @default(0) @map("total_calls")
+  totalErrors Int       @default(0) @map("total_errors")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([enabled, priority])
+  @@map("ai_upstreams")
+}
+
+model AiSetting {
+  key       String   @id @db.VarChar(50)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_settings")
+}
+
+model AiUsageDaily {
+  id           Int      @id @default(autoincrement())
+  date         DateTime @db.Date
+  upstreamId   Int?     @map("upstream_id")
+  totalCalls   Int      @default(0) @map("total_calls")
+  totalErrors  Int      @default(0) @map("total_errors")
+  anonCalls    Int      @default(0) @map("anon_calls")
+  authCalls    Int      @default(0) @map("auth_calls")
+  totalDurMs   BigInt   @default(0) @map("total_dur_ms")
+  inputTokens  BigInt   @default(0) @map("input_tokens")
+  outputTokens BigInt   @default(0) @map("output_tokens")
+
+  @@unique([date, upstreamId])
+  @@map("ai_usage_daily")
+}
