@@ -102,7 +102,8 @@ export default function AdminAiPage() {
   const [loadingUsage, setLoadingUsage] = useState(false)
 
   useEffect(() => {
-    if (!loading && (!user || user.role !== "admin")) router.push("/")
+    if (!loading && !user) router.push("/login?next=/admin/ai")
+    else if (!loading && user?.role !== "admin") router.push("/account")
   }, [loading, user, router])
 
   const fetchUpstreams = async () => {

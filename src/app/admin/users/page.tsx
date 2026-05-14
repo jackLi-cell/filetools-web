@@ -32,7 +32,8 @@ export default function AdminUsersPage() {
   const [creditReason, setCreditReason] = useState("")
 
   useEffect(() => {
-    if (!loading && (!user || user.role !== "admin")) router.push("/")
+    if (!loading && !user) router.push("/login?next=/admin/users")
+    else if (!loading && user?.role !== "admin") router.push("/account")
   }, [loading, user, router])
 
   const fetchUsers = () => {

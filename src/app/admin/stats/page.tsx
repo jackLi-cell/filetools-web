@@ -34,7 +34,8 @@ export default function AdminStatsPage() {
   const [toolStats, setToolStats] = useState<ToolStat[]>([])
 
   useEffect(() => {
-    if (!loading && (!user || user.role !== "admin")) router.push("/")
+    if (!loading && !user) router.push("/login?next=/admin/stats")
+    else if (!loading && user?.role !== "admin") router.push("/account")
   }, [loading, user, router])
 
   useEffect(() => {

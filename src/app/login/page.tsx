@@ -1,13 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { api } from "@/lib/api"
-import { useAuth } from "@/lib/auth-context"
+import { useAuth, type User } from "@/lib/auth-context"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,6 +16,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [nextPath, setNextPath] = useState<string | null>(null)
+
+  useEffect(() => {
+    setNextPath(new URLSearchParams(window.location.search).get("next"))
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,7 +30,13 @@ export default function LoginPage() {
       const res = await api.post("/api/auth/login", { email, password })
       if (res.code === 0) {
         await refresh()
-        router.push("/account")
+        const session = await api.get<User | null>("/api/auth/session")
+        const safeNext = nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : null
+        if (session.code === 0 && session.data?.role === "admin") {
+          router.push(safeNext || "/admin")
+        } else {
+          router.push("/account")
+        }
       } else {
         setError(res.message || "登录失败")
       }
