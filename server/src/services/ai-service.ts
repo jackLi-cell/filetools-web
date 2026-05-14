@@ -49,6 +49,7 @@ const prisma = new PrismaClient()
 
 const SYSTEM_PROMPT_CACHE_TTL_MS = 60_000
 const ENABLED_CACHE_TTL_MS = 30_000
+type OpenAIApiMode = "chat" | "responses"
 
 let systemPromptCache: { value: string; ts: number } | null = null
 let enabledCache: { value: boolean; ts: number } | null = null
@@ -232,6 +233,29 @@ function describeError(err: unknown): {
     }
   }
   return out
+}
+
+function getOpenAIApiMode(model: string): OpenAIApiMode {
+  const normalized = model.trim().toLowerCase()
+  if (
+    /^gpt-5(?:[._:-]|$)/.test(normalized) ||
+    /^o(?:1|3|4)(?:[._:-]|$)/.test(normalized) ||
+    /^(?:gpt-5-)?codex(?:[._:-]|$)/.test(normalized)
+  ) {
+    return "responses"
+  }
+  return "chat"
+}
+
+function getOpenAIModel(
+  provider: ReturnType<typeof createOpenAI>,
+  model: string,
+): { apiMode: OpenAIApiMode; model: ReturnType<ReturnType<typeof createOpenAI>["chat"]> } {
+  const apiMode = getOpenAIApiMode(model)
+  return {
+    apiMode,
+    model: apiMode === "responses" ? provider.responses(model) : provider.chat(model),
+  }
 }
 
 /**
@@ -495,15 +519,20 @@ async function tryStream(opts: {
     apiKey: upstream.apiKey,
     compatibility: "compatible",
   })
+  const selected = getOpenAIModel(provider, upstream.model)
+  console.log(
+    `[ai-service] -> upstream "${upstream.name}" using ${selected.apiMode} API for model=${upstream.model}`,
+  )
 
   const result = streamText({
-    model: provider.chat(upstream.model),
-    system: systemPrompt,
+    model: selected.model,
+    ...(selected.apiMode === "responses"
+      ? { providerOptions: { openai: { instructions: systemPrompt } } }
+      : { system: systemPrompt, temperature: 0.5 }),
     tools: buildTools(),
     maxSteps: 3,
     messages,
     maxTokens: env.ai.maxOutputTokens,
-    temperature: 0.5,
     abortSignal,
     onError: ({ error }) => {
       const detail = describeError(error)
@@ -541,13 +570,17 @@ export async function testUpstream(opts: {
       apiKey: opts.apiKey,
       compatibility: "compatible",
     })
+    const selected = getOpenAIModel(provider, opts.model)
+    const systemPrompt = "You are a connectivity test. Respond with the single word: ok"
+    console.log(`[ai-service] testUpstream using ${selected.apiMode} API for model=${opts.model}`)
     // 用最小化的 streamText 拉一次完成（小 token），等 usage 完成代表全链路 OK
     const result = streamText({
-      model: provider.chat(opts.model),
-      system: "You are a connectivity test. Respond with the single word: ok",
+      model: selected.model,
+      ...(selected.apiMode === "responses"
+        ? { providerOptions: { openai: { instructions: systemPrompt } } }
+        : { system: systemPrompt, temperature: 0 }),
       messages: [{ role: "user", content: "ping" }],
       maxTokens: 5,
-      temperature: 0,
       onError: ({ error }) => {
         const detail = describeError(error)
         console.error(
