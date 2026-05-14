@@ -1,8 +1,8 @@
 import { createOpenAI } from "@ai-sdk/openai"
 import {
-  simulateStreamingMiddleware,
+  formatDataStreamPart,
+  pipeDataStreamToResponse,
   streamText,
-  wrapLanguageModel,
   type CoreMessage,
   type StreamTextResult,
   type ToolSet,
@@ -259,17 +259,195 @@ function getOpenAIModel(
   model: string,
 ): { apiMode: OpenAIApiMode; model: ReturnType<ReturnType<typeof createOpenAI>["chat"]> } {
   const apiMode = getOpenAIApiMode(model)
-  const selected = apiMode === "responses" ? provider.responses(model) : provider.chat(model)
   return {
     apiMode,
-    model:
-      apiMode === "responses"
-        ? wrapLanguageModel({
-            model: selected,
-            middleware: simulateStreamingMiddleware(),
-          })
-        : selected,
+    model: provider.chat(model),
   }
+}
+
+function joinUrl(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}${path}`
+}
+
+function createUpstreamError(message: string, opts: {
+  status?: number
+  url?: string
+  responseBody?: string
+  cause?: unknown
+}): Error {
+  const err = new Error(message) as Error & {
+    status?: number
+    url?: string
+    responseBody?: string
+    cause?: unknown
+  }
+  if (opts.status !== undefined) err.status = opts.status
+  if (opts.url) err.url = opts.url
+  if (opts.responseBody) err.responseBody = opts.responseBody
+  if (opts.cause) err.cause = opts.cause
+  return err
+}
+
+function messageContentToText(content: CoreMessage["content"]): string {
+  if (typeof content === "string") return content
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part
+        if (part && typeof part === "object" && "text" in part) {
+          const text = (part as { text?: unknown }).text
+          return typeof text === "string" ? text : ""
+        }
+        return ""
+      })
+      .filter(Boolean)
+      .join("\n")
+  }
+  return ""
+}
+
+function extractResponsesText(json: unknown): string {
+  const root = json as {
+    output_text?: unknown
+    output?: Array<{ type?: string; content?: unknown }>
+    choices?: Array<{ message?: { content?: unknown }; text?: unknown }>
+  }
+  if (typeof root.output_text === "string") return root.output_text
+
+  const chunks: string[] = []
+  if (Array.isArray(root.output)) {
+    for (const item of root.output) {
+      const content = item?.content
+      if (typeof content === "string") {
+        chunks.push(content)
+        continue
+      }
+      if (Array.isArray(content)) {
+        for (const part of content) {
+          if (typeof part === "string") {
+            chunks.push(part)
+            continue
+          }
+          if (part && typeof part === "object") {
+            const value =
+              "text" in part ? (part as { text?: unknown }).text :
+              "content" in part ? (part as { content?: unknown }).content :
+              undefined
+            if (typeof value === "string") chunks.push(value)
+          }
+        }
+      }
+    }
+  }
+  if (chunks.length > 0) return chunks.join("")
+
+  const firstChoice = root.choices?.[0]
+  if (typeof firstChoice?.message?.content === "string") return firstChoice.message.content
+  if (typeof firstChoice?.text === "string") return firstChoice.text
+  return ""
+}
+
+function extractResponsesUsage(json: unknown): { promptTokens: number; completionTokens: number; totalTokens: number } {
+  const usage = (json as { usage?: Record<string, unknown> }).usage ?? {}
+  const promptTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0) || 0
+  const completionTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? 0) || 0
+  const totalTokens = Number(usage.total_tokens ?? promptTokens + completionTokens) || 0
+  return { promptTokens, completionTokens, totalTokens }
+}
+
+async function tryResponsesGenerate(opts: {
+  upstream: Upstream
+  systemPrompt: string
+  messages: CoreMessage[]
+  abortSignal?: AbortSignal
+}): Promise<StreamTextResult<ToolSet, never>> {
+  const { upstream, systemPrompt, messages, abortSignal } = opts
+  let instructions = systemPrompt
+  const input: Array<{ role: "user" | "assistant"; content: string }> = []
+  for (const message of messages) {
+    const text = messageContentToText(message.content)
+    if (!text.trim()) continue
+    if (message.role === "system") {
+      instructions += `\n\n${text}`
+      continue
+    }
+    input.push({
+      role: message.role === "assistant" ? "assistant" : "user",
+      content: text,
+    })
+  }
+
+  const url = joinUrl(upstream.baseUrl, "/responses")
+  const body = {
+    model: upstream.model,
+    instructions,
+    input,
+    max_output_tokens: env.ai.maxOutputTokens,
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${upstream.apiKey}`,
+    },
+    body: JSON.stringify(body),
+    signal: abortSignal,
+  })
+  const responseText = await response.text()
+  let json: unknown
+  try {
+    json = responseText ? JSON.parse(responseText) : {}
+  } catch (cause) {
+    throw createUpstreamError("Invalid JSON response", {
+      status: response.status,
+      url,
+      responseBody: responseText.slice(0, 1500),
+      cause,
+    })
+  }
+  const upstreamError = (json as { error?: { message?: string } }).error
+  if (!response.ok || upstreamError) {
+    throw createUpstreamError(upstreamError?.message || `Responses API returned ${response.status}`, {
+      status: response.status,
+      url,
+      responseBody: responseText.slice(0, 1500),
+    })
+  }
+
+  const text = extractResponsesText(json)
+  const usage = extractResponsesUsage(json)
+  if (!text.trim()) {
+    throw createUpstreamError("Responses API returned empty text", {
+      status: response.status,
+      url,
+      responseBody: responseText.slice(0, 1500),
+    })
+  }
+
+  const usagePromise = Promise.resolve(usage)
+  return {
+    usage: usagePromise,
+    pipeDataStreamToResponse(
+      response: import("http").ServerResponse,
+      options?: Parameters<typeof pipeDataStreamToResponse>[1],
+    ) {
+      pipeDataStreamToResponse(response, {
+        ...options,
+        execute: (writer) => {
+          writer.write(formatDataStreamPart("text", text))
+          writer.write(formatDataStreamPart("finish_step", {
+            finishReason: "stop",
+            usage,
+            isContinued: false,
+          }))
+          writer.write(formatDataStreamPart("finish_message", {
+            finishReason: "stop",
+            usage,
+          }))
+        },
+      })
+    },
+  } as unknown as StreamTextResult<ToolSet, never>
 }
 
 /**
@@ -528,22 +706,27 @@ async function tryStream(opts: {
       `lastUser="${lastUserText.replace(/\n/g, "\\n")}"`,
   )
 
+  const apiMode = getOpenAIApiMode(upstream.model)
+  console.log(
+    `[ai-service] -> upstream "${upstream.name}" using ${apiMode} API` +
+      `${apiMode === "responses" ? " (manual compatible stream)" : ""} for model=${upstream.model}`,
+  )
+
+  if (apiMode === "responses") {
+    return tryResponsesGenerate({ upstream, systemPrompt, messages, abortSignal })
+  }
+
   const provider = createOpenAI({
     baseURL: upstream.baseUrl,
     apiKey: upstream.apiKey,
     compatibility: "compatible",
   })
   const selected = getOpenAIModel(provider, upstream.model)
-  console.log(
-    `[ai-service] -> upstream "${upstream.name}" using ${selected.apiMode} API` +
-      `${selected.apiMode === "responses" ? " (simulated stream)" : ""} for model=${upstream.model}`,
-  )
 
   const result = streamText({
     model: selected.model,
-    ...(selected.apiMode === "responses"
-      ? { providerOptions: { openai: { instructions: systemPrompt } } }
-      : { system: systemPrompt, temperature: 0.5 }),
+    system: systemPrompt,
+    temperature: 0.5,
     tools: buildTools(),
     maxSteps: 3,
     messages,
@@ -585,18 +768,42 @@ export async function testUpstream(opts: {
       apiKey: opts.apiKey,
       compatibility: "compatible",
     })
-    const selected = getOpenAIModel(provider, opts.model)
+    const apiMode = getOpenAIApiMode(opts.model)
     const systemPrompt = "You are a connectivity test. Respond with the single word: ok"
     console.log(
-      `[ai-service] testUpstream using ${selected.apiMode} API` +
-        `${selected.apiMode === "responses" ? " (simulated stream)" : ""} for model=${opts.model}`,
+      `[ai-service] testUpstream using ${apiMode} API` +
+        `${apiMode === "responses" ? " (manual compatible stream)" : ""} for model=${opts.model}`,
     )
+    if (apiMode === "responses") {
+      const result = await tryResponsesGenerate({
+        upstream: {
+          id: "test",
+          dbId: null,
+          name: "test",
+          baseUrl: opts.baseUrl,
+          apiKey: opts.apiKey,
+          model: opts.model,
+          visionModel: null,
+          priority: 0,
+          enabled: true,
+          failCount: 0,
+          healthyAt: null,
+          lastError: null,
+        },
+        systemPrompt,
+        messages: [{ role: "user", content: "ping" }],
+      })
+      await result.usage
+      const latencyMs = Date.now() - startedAt
+      console.log(`[ai-service] testUpstream OK: ${latencyMs}ms`)
+      return { ok: true, latencyMs }
+    }
+    const selected = getOpenAIModel(provider, opts.model)
     // 用最小化的 streamText 拉一次完成（小 token），等 usage 完成代表全链路 OK
     const result = streamText({
       model: selected.model,
-      ...(selected.apiMode === "responses"
-        ? { providerOptions: { openai: { instructions: systemPrompt } } }
-        : { system: systemPrompt, temperature: 0 }),
+      system: systemPrompt,
+      temperature: 0,
       messages: [{ role: "user", content: "ping" }],
       maxTokens: 5,
       onError: ({ error }) => {
