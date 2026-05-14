@@ -16,6 +16,7 @@ import { attachmentStore } from "./attachment-store.js"
 
 // 把所有工具 slug 抽出来给 zod enum 校验
 const TOOL_SLUGS = TOOLS.map((t) => t.slug) as [string, ...string[]]
+const toolParamValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()])
 
 /**
  * 构建 streamText 的 tools 对象
@@ -34,9 +35,9 @@ export function buildTools(): ToolSet {
           .max(200)
           .describe("简短说明为什么选这个工具，1-2 句中文"),
         params: z
-          .record(z.unknown())
+          .record(toolParamValueSchema)
           .optional()
-          .describe("可选的工具参数，例如 { targetKb: 200 } / { format: 'pdf' } / { quality: 80 }"),
+          .describe("可选的工具参数，只传简单标量值，例如 { targetKb: 200 } / { format: 'pdf' } / { quality: 80 }"),
         attachmentId: z
           .string()
           .optional()
