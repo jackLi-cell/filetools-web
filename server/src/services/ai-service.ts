@@ -1,5 +1,12 @@
 import { createOpenAI } from "@ai-sdk/openai"
-import { streamText, type CoreMessage, type StreamTextResult, type ToolSet } from "ai"
+import {
+  simulateStreamingMiddleware,
+  streamText,
+  wrapLanguageModel,
+  type CoreMessage,
+  type StreamTextResult,
+  type ToolSet,
+} from "ai"
 import { PrismaClient } from "@prisma/client"
 import { env } from "../config/env.js"
 import {
@@ -252,9 +259,16 @@ function getOpenAIModel(
   model: string,
 ): { apiMode: OpenAIApiMode; model: ReturnType<ReturnType<typeof createOpenAI>["chat"]> } {
   const apiMode = getOpenAIApiMode(model)
+  const selected = apiMode === "responses" ? provider.responses(model) : provider.chat(model)
   return {
     apiMode,
-    model: apiMode === "responses" ? provider.responses(model) : provider.chat(model),
+    model:
+      apiMode === "responses"
+        ? wrapLanguageModel({
+            model: selected,
+            middleware: simulateStreamingMiddleware(),
+          })
+        : selected,
   }
 }
 
@@ -521,7 +535,8 @@ async function tryStream(opts: {
   })
   const selected = getOpenAIModel(provider, upstream.model)
   console.log(
-    `[ai-service] -> upstream "${upstream.name}" using ${selected.apiMode} API for model=${upstream.model}`,
+    `[ai-service] -> upstream "${upstream.name}" using ${selected.apiMode} API` +
+      `${selected.apiMode === "responses" ? " (simulated stream)" : ""} for model=${upstream.model}`,
   )
 
   const result = streamText({
@@ -572,7 +587,10 @@ export async function testUpstream(opts: {
     })
     const selected = getOpenAIModel(provider, opts.model)
     const systemPrompt = "You are a connectivity test. Respond with the single word: ok"
-    console.log(`[ai-service] testUpstream using ${selected.apiMode} API for model=${opts.model}`)
+    console.log(
+      `[ai-service] testUpstream using ${selected.apiMode} API` +
+        `${selected.apiMode === "responses" ? " (simulated stream)" : ""} for model=${opts.model}`,
+    )
     // 用最小化的 streamText 拉一次完成（小 token），等 usage 完成代表全链路 OK
     const result = streamText({
       model: selected.model,
