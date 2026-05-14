@@ -98,8 +98,8 @@ export async function aiRateLimit(req: Request, res: Response, next: NextFunctio
 export async function acquireFlowLock(req: Request): Promise<{ acquired: boolean; release: () => Promise<void> }> {
   const ip = getClientIp(req)
   const key = `ai:flow:${ip}`
-  // SET NX EX 300，最多 5 分钟保护
-  const ok = await redis.set(key, "1", "EX", 300, "NX")
+  // SET NX EX 120，最多 2 分钟保护（足够一次正常流式聊天；万一漏 release 也快速恢复）
+  const ok = await redis.set(key, "1", "EX", 120, "NX")
   if (ok !== "OK") {
     return { acquired: false, release: async () => { /* noop */ } }
   }

@@ -86,6 +86,11 @@ router.post("/chat", softAuth, checkAiEnabled, aiRateLimit, async (req: Request,
     await lock.release()
   }
 
+  // 双重保险：无论流式响应如何结束（正常完成 / 客户端关闭 / 错误中断），都释放锁
+  // res 'finish' = 响应正常结束；res 'close' = 连接关闭（不论是否完成）
+  res.on("finish", () => { void release() })
+  res.on("close", () => { void release() })
+
   try {
     const userId = (req as { userId?: number }).userId
 
@@ -104,7 +109,7 @@ router.post("/chat", softAuth, checkAiEnabled, aiRateLimit, async (req: Request,
       },
     })
 
-    // 等到流真正完成（或 abort）后再释放锁
+    // 等到流真正完成（或 abort）后再释放锁（最早的释放路径）
     result.usage
       .finally(() => {
         void release()
