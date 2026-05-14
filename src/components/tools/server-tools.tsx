@@ -29,7 +29,20 @@ export function PdfSplitTool() {
 }
 
 export function PdfCompressTool() {
-  return <ServerToolBase toolSlug="pdf-compress" accept="application/pdf" maxSizeMb={50} creditsCost={2} acceptHint="支持 PDF 文件" />
+  return <ServerToolBase
+    toolSlug="pdf-compress"
+    accept="application/pdf"
+    maxSizeMb={50}
+    creditsCost={2}
+    acceptHint="支持 PDF 文件"
+    paramsSchema={[
+      { name: "quality", label: "压缩档位", type: "select", default: "ebook", options: [
+        { value: "screen", label: "最小体积（72dpi，适合屏幕浏览）" },
+        { value: "ebook", label: "平衡（150dpi，推荐）" },
+        { value: "printer", label: "高质量（300dpi，适合打印）" },
+      ]},
+    ]}
+  />
 }
 
 export function VideoCompressTool() {
@@ -39,7 +52,20 @@ export function VideoCompressTool() {
     maxSizeMb={500}
     creditsCost={5}
     paramsSchema={[
-      { name: "quality", label: "质量（CRF，越小越高）", type: "number", default: 28, min: 18, max: 35 },
+      { name: "preset", label: "压缩预设", type: "select", default: "balanced", options: [
+        { value: "wechat", label: "微信发送（≤25MB）" },
+        { value: "email", label: "邮件附件（≤10MB）" },
+        { value: "balanced", label: "平衡（CRF 28）" },
+        { value: "quality", label: "高质量（CRF 23）" },
+        { value: "custom", label: "自定义 CRF" },
+      ]},
+      { name: "crf", label: "自定义 CRF（18-35，越小越高）", type: "number", default: 28, min: 18, max: 35 },
+      { name: "resolution", label: "分辨率", type: "select", default: "original", options: [
+        { value: "original", label: "保持原始" },
+        { value: "1080p", label: "1080p (1920x1080)" },
+        { value: "720p", label: "720p (1280x720)" },
+        { value: "480p", label: "480p (854x480)" },
+      ]},
     ]}
     acceptHint="支持 MP4、MOV、WebM 等"
   />
@@ -58,6 +84,12 @@ export function VideoConvertTool() {
         { value: "mov", label: "MOV" },
         { value: "avi", label: "AVI" },
       ]},
+      { name: "resolution", label: "分辨率", type: "select", default: "original", options: [
+        { value: "original", label: "保持原始" },
+        { value: "1080p", label: "1080p" },
+        { value: "720p", label: "720p" },
+        { value: "480p", label: "480p" },
+      ]},
     ]}
   />
 }
@@ -69,9 +101,27 @@ export function VideoToGifTool() {
     maxSizeMb={100}
     creditsCost={3}
     paramsSchema={[
-      { name: "fps", label: "帧率", type: "number", default: 10, min: 5, max: 30 },
-      { name: "width", label: "宽度（px）", type: "number", default: 480, min: 100, max: 1920 },
+      { name: "startTime", label: "起始时间（秒）", type: "number", default: 0, min: 0 },
+      { name: "duration", label: "持续时长（秒）", type: "number", default: 5, min: 1, max: 30 },
+      { name: "fps", label: "帧率", type: "select", default: "10", options: [
+        { value: "5", label: "5 fps（最小体积）" },
+        { value: "10", label: "10 fps（推荐）" },
+        { value: "15", label: "15 fps（流畅）" },
+        { value: "24", label: "24 fps（高质量）" },
+      ]},
+      { name: "width", label: "宽度（px）", type: "select", default: "480", options: [
+        { value: "320", label: "320px（小）" },
+        { value: "480", label: "480px（中）" },
+        { value: "640", label: "640px（大）" },
+        { value: "original", label: "原始宽度" },
+      ]},
+      { name: "loop", label: "循环次数", type: "select", default: "0", options: [
+        { value: "0", label: "无限循环" },
+        { value: "1", label: "播放 1 次" },
+        { value: "3", label: "播放 3 次" },
+      ]},
     ]}
+    acceptHint="支持 MP4、MOV、WebM，建议片段不超过 30 秒"
   />
 }
 
@@ -124,6 +174,8 @@ export function AudioTrimTool() {
     paramsSchema={[
       { name: "start", label: "起始时间（秒）", type: "number", default: 0, min: 0 },
       { name: "duration", label: "持续时长（秒）", type: "number", default: 30, min: 1 },
+      { name: "fadeIn", label: "淡入时长（秒）", type: "number", default: 0, min: 0, max: 10 },
+      { name: "fadeOut", label: "淡出时长（秒）", type: "number", default: 0, min: 0, max: 10 },
     ]}
   />
 }
