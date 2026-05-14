@@ -35,6 +35,11 @@ import { ImageCollageTool } from "./image-collage"
 import { ImageExifTool } from "./image-exif"
 import { ImageSvgConvertTool } from "./image-svg-convert"
 import { PlaceholderTool } from "./placeholder"
+import { FaviconGeneratorTool } from "./favicon-generator"
+import { TableConverterTool } from "./table-converter"
+import { TextReplaceTool } from "./text-replace"
+import { DataMaskTool } from "./data-mask"
+import { TextCleanerTool } from "./text-cleaner"
 
 const toolComponents: Record<string, React.ComponentType> = {
   "image-compress": ImageCompressTool,
@@ -81,6 +86,11 @@ const toolComponents: Record<string, React.ComponentType> = {
   "image-collage": ImageCollageTool,
   "image-exif": ImageExifTool,
   "image-svg-convert": ImageSvgConvertTool,
+  "favicon-generator": FaviconGeneratorTool,
+  "table-converter": TableConverterTool,
+  "text-replace": TextReplaceTool,
+  "data-mask": DataMaskTool,
+  "text-cleaner": TextCleanerTool,
   // Office (LibreOffice)
   "word-to-pdf": WordToPdfTool,
   "pdf-to-word": PdfToWordTool,

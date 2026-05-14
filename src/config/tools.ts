@@ -24,9 +24,9 @@ export const categories: ToolCategory[] = [
   { slug: "video", name: "视频处理", description: "压缩、格式转换、截取、转 GIF", icon: "🎬", toolCount: 5 },
   { slug: "audio", name: "音频处理", description: "格式转换、压缩、裁剪、合并", icon: "🎵", toolCount: 6 },
   { slug: "markdown", name: "Markdown", description: "预览、转 HTML、转 PDF", icon: "📝", toolCount: 4 },
-  { slug: "dev", name: "开发者工具", description: "JSON、正则、时间戳、编码", icon: "⚡", toolCount: 8 },
+  { slug: "dev", name: "开发者工具", description: "JSON、正则、时间戳、编码", icon: "⚡", toolCount: 9 },
   { slug: "qrcode", name: "二维码工具", description: "生成、识别、条形码", icon: "📱", toolCount: 4 },
-  { slug: "text", name: "文本工具", description: "字数统计、去重、大小写转换", icon: "✏️", toolCount: 4 },
+  { slug: "text", name: "文本工具", description: "字数统计、去重、大小写转换", icon: "✏️", toolCount: 8 },
   { slug: "security", name: "文件安全", description: "哈希校验、元数据清除", icon: "🔒", toolCount: 3 },
   { slug: "signature", name: "电子签名", description: "手写签名、插入 PDF", icon: "✍️", toolCount: 2 },
 ]
@@ -87,6 +87,12 @@ export const tools: Tool[] = [
   // 其他
   { slug: "html-to-markdown", name: "HTML 转 Markdown", description: "将 HTML 转为 Markdown 格式", category: "markdown", isFree: true, creditsCost: 0, isLocal: true, version: "v0.1" },
   { slug: "signature-create", name: "电子签名生成", description: "手写板生成签名图片", category: "signature", isFree: true, creditsCost: 0, isLocal: true, version: "v0.1" },
+  // 新增工具（Phase 7 扩展）
+  { slug: "favicon-generator", name: "Favicon 生成器", description: "生成全尺寸网站图标和 App Icon", category: "dev", isFree: true, creditsCost: 0, isLocal: true, version: "v0.1" },
+  { slug: "table-converter", name: "表格转 Markdown/HTML", description: "将表格数据转为 Markdown 或 HTML 格式", category: "text", isFree: true, creditsCost: 0, isLocal: true, version: "v0.1" },
+  { slug: "text-replace", name: "文本批量替换", description: "批量查找替换和文本差异对比", category: "text", isFree: true, creditsCost: 0, isLocal: true, version: "v0.1" },
+  { slug: "data-mask", name: "数据脱敏", description: "自动识别并脱敏手机号、身份证、邮箱等", category: "text", isFree: true, creditsCost: 0, isLocal: true, version: "v0.1" },
+  { slug: "text-cleaner", name: "文本清理", description: "去除多余空格、空行、乱码和格式问题", category: "text", isFree: true, creditsCost: 0, isLocal: true, version: "v0.1" },
   // 文档转换（LibreOffice）
   { slug: "word-to-pdf", name: "Word 转 PDF", description: "将 Word 文档转换为 PDF 格式", category: "convert", isFree: false, creditsCost: 3, isLocal: false, version: "v0.1" },
   { slug: "pdf-to-word", name: "PDF 转 Word", description: "将 PDF 转换为可编辑的 Word 文档", category: "convert", isFree: false, creditsCost: 5, isLocal: false, version: "v0.1" },
