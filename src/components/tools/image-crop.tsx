@@ -2,6 +2,29 @@
 
 import { useState, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+
+const PRESETS = [
+  { name: "自由", ratio: 0, desc: "自由裁剪" },
+  { name: "1:1", ratio: 1, desc: "头像/正方形" },
+  { name: "4:3", ratio: 4 / 3, desc: "PPT/照片" },
+  { name: "3:4", ratio: 3 / 4, desc: "小红书" },
+  { name: "16:9", ratio: 16 / 9, desc: "封面/横屏" },
+  { name: "9:16", ratio: 9 / 16, desc: "手机壁纸/竖屏" },
+  { name: "2:1", ratio: 2, desc: "公众号首图" },
+  { name: "3:1", ratio: 3, desc: "Banner" },
+]
+
+const PLATFORM_SIZES = [
+  { name: "微信头像", w: 132, h: 132 },
+  { name: "公众号封面", w: 900, h: 383 },
+  { name: "小红书封面", w: 1080, h: 1440 },
+  { name: "淘宝主图", w: 800, h: 800 },
+  { name: "抖音封面", w: 1080, h: 1920 },
+  { name: "B站封面", w: 1146, h: 717 },
+  { name: "知乎文章", w: 1440, h: 810 },
+  { name: "微博配图", w: 1080, h: 1080 },
+]
 
 export function ImageCropTool() {
   const [file, setFile] = useState<File | null>(null)
@@ -12,6 +35,12 @@ export function ImageCropTool() {
   const [dragging, setDragging] = useState(false)
   const [startPos, setStartPos] = useState({ x: 0, y: 0 })
   const [dragOver, setDragOver] = useState(false)
+  const [aspectRatio, setAspectRatio] = useState(0)
+  const [outputWidth, setOutputWidth] = useState(0)
+  const [outputHeight, setOutputHeight] = useState(0)
+  const [rotation, setRotation] = useState(0)
+  const [flipH, setFlipH] = useState(false)
+  const [flipV, setFlipV] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -57,10 +86,14 @@ export function ImageCropTool() {
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!dragging) return
     const pos = getRelativePos(e)
-    const x = Math.min(startPos.x, pos.x)
-    const y = Math.min(startPos.y, pos.y)
     const w = Math.abs(pos.x - startPos.x)
-    const h = Math.abs(pos.y - startPos.y)
+    const x = Math.min(startPos.x, pos.x)
+    let h = Math.abs(pos.y - startPos.y)
+    let y = Math.min(startPos.y, pos.y)
+    if (aspectRatio > 0) {
+      h = w / aspectRatio
+      if (pos.y < startPos.y) y = startPos.y - h
+    }
     setCropArea({ x, y, w, h })
   }
 
@@ -70,11 +103,24 @@ export function ImageCropTool() {
     if (!file || cropArea.w === 0) return
     const img = new Image()
     img.onload = () => {
+      const finalW = outputWidth > 0 ? outputWidth : Math.round(cropArea.w)
+      const finalH = outputHeight > 0 ? outputHeight : Math.round(cropArea.h)
       const canvas = document.createElement("canvas")
-      canvas.width = cropArea.w
-      canvas.height = cropArea.h
+      canvas.width = finalW
+      canvas.height = finalH
       const ctx = canvas.getContext("2d")!
-      ctx.drawImage(img, cropArea.x, cropArea.y, cropArea.w, cropArea.h, 0, 0, cropArea.w, cropArea.h)
+
+      ctx.save()
+      ctx.translate(finalW / 2, finalH / 2)
+      ctx.rotate((rotation * Math.PI) / 180)
+      ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1)
+      ctx.drawImage(
+        img,
+        cropArea.x, cropArea.y, cropArea.w, cropArea.h,
+        -finalW / 2, -finalH / 2, finalW, finalH
+      )
+      ctx.restore()
+
       canvas.toBlob((blob) => {
         if (!blob) return
         setResult(URL.createObjectURL(blob))
@@ -138,8 +184,79 @@ export function ImageCropTool() {
       </div>
 
       {preview && (
+        <>
+          {/* 比例预设 */}
+          <div className="space-y-2">
+            <label className="text-xs text-gray-600">裁剪比例</label>
+            <div className="flex gap-1 flex-wrap">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.name}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    aspectRatio === p.ratio ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  onClick={() => setAspectRatio(p.ratio)}
+                  title={p.desc}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 平台尺寸 */}
+          <div className="space-y-2">
+            <label className="text-xs text-gray-600">平台尺寸预设</label>
+            <div className="flex gap-1 flex-wrap">
+              {PLATFORM_SIZES.map((p) => (
+                <button
+                  key={p.name}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    outputWidth === p.w && outputHeight === p.h ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setOutputWidth(p.w)
+                    setOutputHeight(p.h)
+                    setAspectRatio(p.w / p.h)
+                  }}
+                >
+                  {p.name} ({p.w}x{p.h})
+                </button>
+              ))}
+              <button
+                className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
+                onClick={() => { setOutputWidth(0); setOutputHeight(0) }}
+              >
+                原始尺寸
+              </button>
+            </div>
+          </div>
+
+          {/* 旋转/翻转 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs text-gray-600">变换：</label>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setRotation((r) => (r - 90) % 360)}>↺ 左转</Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setRotation((r) => (r + 90) % 360)}>↻ 右转</Button>
+            <Button variant={flipH ? "default" : "outline"} size="sm" className="h-7 text-xs" onClick={() => setFlipH(!flipH)}>↔ 水平翻转</Button>
+            <Button variant={flipV ? "default" : "outline"} size="sm" className="h-7 text-xs" onClick={() => setFlipV(!flipV)}>↕ 垂直翻转</Button>
+            {rotation !== 0 && <span className="text-xs text-gray-500">旋转 {rotation}°</span>}
+          </div>
+
+          {/* 自定义输出尺寸 */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">输出尺寸：</label>
+            <Input type="number" value={outputWidth || ""} onChange={(e) => setOutputWidth(Number(e.target.value))} placeholder="宽" className="w-20 h-7 text-xs" />
+            <span className="text-xs text-gray-400">x</span>
+            <Input type="number" value={outputHeight || ""} onChange={(e) => setOutputHeight(Number(e.target.value))} placeholder="高" className="w-20 h-7 text-xs" />
+            <span className="text-xs text-gray-400">px（留空则按裁剪区域原始尺寸）</span>
+          </div>
+        </>
+      )}
+
+      {preview && (
         <div className="flex items-center gap-4 text-xs text-gray-500">
           <span>裁剪区域：{Math.round(cropArea.w)} × {Math.round(cropArea.h)} px</span>
+          {outputWidth > 0 && <span>→ 输出：{outputWidth} × {outputHeight} px</span>}
           <Button variant="ghost" size="sm" onClick={() => document.getElementById("crop-input")?.click()}>更换图片</Button>
         </div>
       )}

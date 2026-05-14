@@ -136,14 +136,51 @@ export function ImageExifTool() {
           {Object.keys(exifData).length === 0 ? (
             <p className="text-sm text-gray-500">该图片不包含 EXIF 元数据信息。</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {Object.entries(exifData).map(([key, value]) => (
-                <div key={key} className="flex justify-between items-center py-1.5 px-2 bg-gray-50 rounded text-xs">
-                  <span className="text-gray-600 font-medium">{fieldLabels[key] || key}</span>
-                  <span className="text-gray-900 text-right max-w-[60%] truncate">{String(value)}</span>
+            <>
+              {/* 相机信息卡片 */}
+              {(exifData.Make || exifData.Model || exifData.LensModel) && (
+                <div className="mb-4 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border">
+                  <div className="flex items-start gap-4">
+                    <div className="text-3xl">📷</div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900">
+                        {[exifData.Make, exifData.Model].filter(Boolean).join(" ")}
+                      </p>
+                      {exifData.LensModel && (
+                        <p className="text-xs text-gray-600 mt-0.5">{String(exifData.LensModel)}</p>
+                      )}
+                      <div className="flex flex-wrap gap-3 mt-2">
+                        {exifData.FNumber && (
+                          <span className="text-xs text-gray-700 bg-white px-2 py-0.5 rounded border">f/{String(exifData.FNumber)}</span>
+                        )}
+                        {exifData.ExposureTime && (
+                          <span className="text-xs text-gray-700 bg-white px-2 py-0.5 rounded border">{String(exifData.ExposureTime)}s</span>
+                        )}
+                        {exifData.ISOSpeedRatings && (
+                          <span className="text-xs text-gray-700 bg-white px-2 py-0.5 rounded border">ISO {String(exifData.ISOSpeedRatings)}</span>
+                        )}
+                        {exifData.FocalLength && (
+                          <span className="text-xs text-gray-700 bg-white px-2 py-0.5 rounded border">{String(exifData.FocalLength)}mm</span>
+                        )}
+                      </div>
+                      {exifData.DateTimeOriginal && (
+                        <p className="text-xs text-gray-500 mt-2">拍摄于 {String(exifData.DateTimeOriginal)}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
+              )}
+
+              {/* 详细数据表格 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {Object.entries(exifData).map(([key, value]) => (
+                  <div key={key} className="flex justify-between items-center py-1.5 px-2 bg-gray-50 rounded text-xs">
+                    <span className="text-gray-600 font-medium">{fieldLabels[key] || key}</span>
+                    <span className="text-gray-900 text-right max-w-[60%] truncate">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
 
           {exifData.GPSLatitude && (
@@ -156,10 +193,46 @@ export function ImageExifTool() {
 
       {cleaned && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
-          <p className="text-sm text-green-800">✅ 元数据已清除</p>
+          <p className="text-sm text-green-800">元数据已清除</p>
           <Button size="sm" onClick={download}>下载</Button>
         </div>
       )}
+
+      {/* 批量清除 */}
+      <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
+        <h3 className="text-sm font-medium text-gray-900">批量清除 EXIF</h3>
+        <div
+          className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-gray-300"
+          onClick={() => document.getElementById("exif-batch-input")?.click()}
+        >
+          <input id="exif-batch-input" type="file" accept="image/jpeg,image/png" multiple className="hidden" onChange={async (e) => {
+            const files = e.target.files
+            if (!files || files.length === 0) return
+            const JSZip = (await import("jszip")).default
+            const zip = new JSZip()
+            for (const f of Array.from(files)) {
+              const blob = await new Promise<Blob>((resolve) => {
+                const img = new Image()
+                img.onload = () => {
+                  const canvas = document.createElement("canvas")
+                  canvas.width = img.width
+                  canvas.height = img.height
+                  canvas.getContext("2d")!.drawImage(img, 0, 0)
+                  canvas.toBlob((b) => resolve(b || new Blob()), f.type === "image/png" ? "image/png" : "image/jpeg", 0.95)
+                }
+                img.src = URL.createObjectURL(f)
+              })
+              zip.file(`no_exif_${f.name}`, blob)
+            }
+            const zipBlob = await zip.generateAsync({ type: "blob" })
+            const a = document.createElement("a")
+            a.href = URL.createObjectURL(zipBlob)
+            a.download = "no_exif_images.zip"
+            a.click()
+          }} />
+          <p className="text-sm text-gray-600">选择多张图片，批量清除元数据并打包下载 ZIP</p>
+        </div>
+      </div>
     </div>
   )
 }

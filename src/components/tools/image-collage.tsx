@@ -12,10 +12,13 @@ interface ImageFile {
 
 export function ImageCollageTool() {
   const [images, setImages] = useState<ImageFile[]>([])
-  const [direction, setDirection] = useState<"vertical" | "horizontal">("vertical")
+  const [direction, setDirection] = useState<"vertical" | "horizontal" | "grid">("vertical")
   const [gap, setGap] = useState(0)
   const [result, setResult] = useState("")
   const [dragOver, setDragOver] = useState(false)
+  const [bgColor, setBgColor] = useState("#ffffff")
+  const [borderRadius, setBorderRadius] = useState(0)
+  const [gridCols, setGridCols] = useState(2)
 
   const addFiles = (files: FileList | null) => {
     if (!files) return
@@ -51,13 +54,46 @@ export function ImageCollageTool() {
     const canvas = document.createElement("canvas")
     const ctx = canvas.getContext("2d")!
 
-    if (direction === "vertical") {
+    if (direction === "grid") {
+      const cols = gridCols
+      const rows = Math.ceil(images.length / cols)
+      const cellW = Math.max(...images.map(i => i.width))
+      const cellH = Math.max(...images.map(i => i.height))
+      canvas.width = cols * cellW + (cols - 1) * gap
+      canvas.height = rows * cellH + (rows - 1) * gap
+      ctx.fillStyle = bgColor
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      let loaded = 0
+      images.forEach((img, idx) => {
+        const col = idx % cols
+        const row = Math.floor(idx / cols)
+        const x = col * (cellW + gap)
+        const y = row * (cellH + gap)
+        const el = new Image()
+        el.onload = () => {
+          if (borderRadius > 0) {
+            ctx.save()
+            ctx.beginPath()
+            ctx.roundRect(x, y, cellW, cellH, borderRadius)
+            ctx.clip()
+          }
+          const scale = Math.min(cellW / el.width, cellH / el.height)
+          const dw = el.width * scale
+          const dh = el.height * scale
+          ctx.drawImage(el, x + (cellW - dw) / 2, y + (cellH - dh) / 2, dw, dh)
+          if (borderRadius > 0) ctx.restore()
+          loaded++
+          if (loaded === images.length) setResult(canvas.toDataURL("image/png"))
+        }
+        el.src = img.url
+      })
+    } else if (direction === "vertical") {
       const maxWidth = Math.max(...images.map(i => i.width))
       const totalHeight = images.reduce((sum, i) => sum + Math.round(i.height * (maxWidth / i.width)), 0) + gap * (images.length - 1)
       canvas.width = maxWidth
       canvas.height = totalHeight
-
-      ctx.fillStyle = "#ffffff"
+      ctx.fillStyle = bgColor
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
       let y = 0
@@ -73,11 +109,11 @@ export function ImageCollageTool() {
       draws.forEach(({ img, y, w, h }) => {
         const el = new Image()
         el.onload = () => {
+          if (borderRadius > 0) { ctx.save(); ctx.beginPath(); ctx.roundRect(0, y, w, h, borderRadius); ctx.clip() }
           ctx.drawImage(el, 0, y, w, h)
+          if (borderRadius > 0) ctx.restore()
           loaded++
-          if (loaded === draws.length) {
-            setResult(canvas.toDataURL("image/png"))
-          }
+          if (loaded === draws.length) setResult(canvas.toDataURL("image/png"))
         }
         el.src = img.url
       })
@@ -86,8 +122,7 @@ export function ImageCollageTool() {
       const totalWidth = images.reduce((sum, i) => sum + Math.round(i.width * (maxHeight / i.height)), 0) + gap * (images.length - 1)
       canvas.width = totalWidth
       canvas.height = maxHeight
-
-      ctx.fillStyle = "#ffffff"
+      ctx.fillStyle = bgColor
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
       let x = 0
@@ -103,11 +138,11 @@ export function ImageCollageTool() {
       draws.forEach(({ img, x, w, h }) => {
         const el = new Image()
         el.onload = () => {
+          if (borderRadius > 0) { ctx.save(); ctx.beginPath(); ctx.roundRect(x, 0, w, h, borderRadius); ctx.clip() }
           ctx.drawImage(el, x, 0, w, h)
+          if (borderRadius > 0) ctx.restore()
           loaded++
-          if (loaded === draws.length) {
-            setResult(canvas.toDataURL("image/png"))
-          }
+          if (loaded === draws.length) setResult(canvas.toDataURL("image/png"))
         }
         el.src = img.url
       })
@@ -167,10 +202,27 @@ export function ImageCollageTool() {
             <button onClick={() => setDirection("horizontal")} className={`px-3 py-1.5 rounded text-sm ${direction === "horizontal" ? "bg-blue-600 text-white" : "bg-white border text-gray-700"}`}>
               横向拼接
             </button>
+            <button onClick={() => setDirection("grid")} className={`px-3 py-1.5 rounded text-sm ${direction === "grid" ? "bg-blue-600 text-white" : "bg-white border text-gray-700"}`}>
+              网格拼图
+            </button>
+          </div>
+          {direction === "grid" && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-600">列数</label>
+              <input type="number" value={gridCols} onChange={(e) => setGridCols(Math.max(1, Number(e.target.value)))} min={1} max={6} className="w-14 h-8 px-2 border rounded text-sm" />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">间距</label>
+            <input type="number" value={gap} onChange={(e) => setGap(Number(e.target.value))} min={0} max={50} className="w-14 h-8 px-2 border rounded text-sm" />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">间距（px）</label>
-            <input type="number" value={gap} onChange={(e) => setGap(Number(e.target.value))} min={0} max={50} className="w-16 h-8 px-2 border rounded text-sm" />
+            <label className="text-xs text-gray-600">圆角</label>
+            <input type="number" value={borderRadius} onChange={(e) => setBorderRadius(Number(e.target.value))} min={0} max={50} className="w-14 h-8 px-2 border rounded text-sm" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">背景</label>
+            <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer" />
           </div>
         </div>
       )}
