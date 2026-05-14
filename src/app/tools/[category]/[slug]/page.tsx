@@ -7,6 +7,7 @@ import { tools, getToolBySlug, getCategoryBySlug } from "@/config/tools"
 import { getToolSeo } from "@/config/seo"
 import { siteConfig } from "@/config/site"
 import { ToolRenderer } from "@/components/tools/tool-renderer"
+import { ToolDisclaimer } from "@/components/tool-disclaimer"
 import { applyCategoryPaymentSettings, applyCategoryPaymentSetting } from "@/lib/payment-settings"
 
 export const runtime = "edge"
@@ -125,9 +126,14 @@ export default async function ToolPage({ params }: { params: Promise<{ category:
       </div>
 
       {/* 工具操作区 */}
-      <Card className="p-6 mb-8">
+      <Card className="p-6 mb-4">
         <ToolRenderer slug={tool.slug} />
       </Card>
+
+      {/* 高风险工具免责声明 */}
+      {tool.slug.includes("signature") && <div className="mb-8"><ToolDisclaimer type="signature" /></div>}
+      {tool.slug.includes("ocr") && <div className="mb-8"><ToolDisclaimer type="ocr" /></div>}
+      {(tool.slug.includes("steganography") || tool.slug.includes("exif")) && <div className="mb-8"><ToolDisclaimer type="privacy" /></div>}
 
       {/* 使用说明 */}
       <div className="mb-8">

@@ -1,8 +1,8 @@
 import Link from "next/link"
-import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { categories, tools } from "@/config/tools"
+import { ToolSearch } from "@/components/tool-search"
 
 const popularTools = tools.filter(t => t.version === "v0.1").slice(0, 8)
 
@@ -18,11 +18,7 @@ export default function HomePage() {
             图片压缩、PDF 转换、Office 文档转换、视频处理等 50+ 实用工具，大部分在浏览器本地处理，文件不上传服务器。
           </p>
           <div className="max-w-md mx-auto">
-            <Input
-              type="search"
-              placeholder="搜索工具，如：图片压缩、PDF 合并、JSON 格式化..."
-              className="h-11 text-sm"
-            />
+            <ToolSearch />
           </div>
         </div>
       </section>
