@@ -497,13 +497,12 @@ async function tryStream(opts: {
   })
 
   const result = streamText({
-    model: provider(upstream.model),
+    model: provider.chat(upstream.model),
     system: systemPrompt,
     tools: buildTools(),
     maxSteps: 3,
     messages,
     maxTokens: env.ai.maxOutputTokens,
-    // 工具调用需要更稳定的输出，从 0.7 降到 0.5
     temperature: 0.5,
     abortSignal,
     onError: ({ error }) => {
@@ -544,7 +543,7 @@ export async function testUpstream(opts: {
     })
     // 用最小化的 streamText 拉一次完成（小 token），等 usage 完成代表全链路 OK
     const result = streamText({
-      model: provider(opts.model),
+      model: provider.chat(opts.model),
       system: "You are a connectivity test. Respond with the single word: ok",
       messages: [{ role: "user", content: "ping" }],
       maxTokens: 5,
