@@ -128,3 +128,19 @@
     @apply font-sans;
   }
 }
+
+.home-page:has(.ai-chat-active) .home-after-ai,
+.home-ai-shell:has(.ai-chat-active) .ai-landing-copy {
+  display: none;
+}
+
+.home-ai-shell:has(.ai-chat-active) {
+  height: calc(100dvh - 3.5rem);
+  overflow: hidden;
+  border-bottom-width: 0;
+  padding-block: 0;
+}
+
+.home-ai-shell:has(.ai-chat-active) > .container {
+  height: 100%;
+}

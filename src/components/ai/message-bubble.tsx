@@ -32,9 +32,27 @@ function asNumber(v: unknown): number | undefined {
 }
 
 function getFileName(data: string, mimeType?: string): string {
-  if (!data.startsWith("data:")) return "ai-result"
-  const ext = mimeType?.split("/").pop()?.replace("plain", "txt") || "file"
-  return `ai-result.${ext}`
+  const mime = (mimeType || "").toLowerCase()
+  const ext =
+    mime.includes("wordprocessingml.document")
+      ? "docx"
+      : mime.includes("markdown")
+        ? "md"
+        : mime.includes("plain")
+          ? "txt"
+          : mime.includes("html")
+            ? "html"
+            : mime.includes("json")
+              ? "json"
+              : mime.includes("csv")
+                ? "csv"
+                : mimeType?.split("/").pop()?.replace("plain", "txt") || "file"
+  return `灵猫生成文件.${ext}`
+}
+
+function getFileUrl(data: string, mimeType?: string): string {
+  if (data.startsWith("data:")) return data
+  return `data:${mimeType || "application/octet-stream"};base64,${data}`
 }
 
 function getMessageText(msg: UIMessage | undefined, fallback?: string): string {
@@ -48,8 +66,40 @@ function getMessageText(msg: UIMessage | undefined, fallback?: string): string {
   return msg.content ?? fallback ?? ""
 }
 
-function textDownloadUrl(text: string): string {
-  return `data:text/markdown;charset=utf-8,${encodeURIComponent(text)}`
+function asRecord(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === "object" ? (v as Record<string, unknown>) : undefined
+}
+
+function getToolResultFiles(result: unknown): Array<{ name: string; url: string; mimeType?: string }> {
+  const root = asRecord(result)
+  if (!root) return []
+  const candidates = Array.isArray(root.files)
+    ? root.files
+    : Array.isArray(root.file)
+      ? root.file
+      : root.file
+        ? [root.file]
+        : root.url || root.downloadUrl
+          ? [root]
+          : []
+
+  return candidates.flatMap((candidate) => {
+    const item = asRecord(candidate)
+    if (!item) return []
+    const url = asString(item.url) ?? asString(item.downloadUrl) ?? asString(item.href)
+    if (!url) return []
+    return [
+      {
+        name:
+          asString(item.name) ??
+          asString(item.fileName) ??
+          asString(item.filename) ??
+          "ai-result",
+        url,
+        mimeType: asString(item.mimeType) ?? asString(item.mime),
+      },
+    ]
+  })
 }
 
 export function MessageBubble({ role, message, content, isStreaming }: MessageBubbleProps) {
@@ -62,7 +112,7 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
       <div className="flex w-full justify-end">
         <div
           className={cn(
-            "max-w-[80%] rounded-2xl rounded-tr-md bg-blue-50 px-4 py-2 text-sm text-gray-900",
+            "max-w-[80%] rounded-2xl rounded-tr-md bg-blue-50 px-4 py-2 text-[13px] leading-5 text-gray-900",
             "whitespace-pre-wrap break-words animate-in fade-in slide-in-from-bottom-2 duration-500"
           )}
         >
@@ -88,18 +138,18 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
   const parts = message?.parts ?? []
   const hasParts = parts.length > 0
   const fallbackText = !hasParts ? message?.content ?? content ?? "" : ""
-  const fullText = getMessageText(message, content)
 
   return (
     <div className="flex w-full justify-start">
       <div
         className={cn(
           "max-w-[80%] space-y-2 rounded-2xl rounded-tl-md border border-gray-200 bg-white px-4 py-3 shadow-sm",
+          "text-[13px] leading-5",
           "animate-in fade-in slide-in-from-bottom-2 duration-500"
         )}
       >
         {!hasParts && !fallbackText ? (
-          <span className="inline-flex items-center gap-1 text-sm text-gray-400">
+          <span className="inline-flex items-center gap-1 text-[13px] text-gray-400">
             正在思考
             <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-gray-400" />
             <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-gray-400 [animation-delay:150ms]" />
@@ -122,7 +172,7 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
                 <DownloadFileCard
                   key={`file-${i}`}
                   name={getFileName(filePart.data, filePart.mimeType)}
-                  url={filePart.data}
+                  url={getFileUrl(filePart.data, filePart.mimeType)}
                   mimeType={filePart.mimeType}
                 />
               )
@@ -173,6 +223,21 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
                   />
                 )
               }
+              const fileCards = getToolResultFiles(inv.result)
+              if (fileCards.length > 0) {
+                return (
+                  <div key={`tool-files-${i}`} className="space-y-2">
+                    {fileCards.map((file, fileIndex) => (
+                      <DownloadFileCard
+                        key={`${file.url}-${fileIndex}`}
+                        name={file.name}
+                        url={file.url}
+                        mimeType={file.mimeType}
+                      />
+                    ))}
+                  </div>
+                )
+              }
               // other tools: render minimal note
               return (
                 <div
@@ -193,13 +258,6 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
           />
         ) : null}
 
-        {!isStreaming && fullText.trim() ? (
-          <DownloadFileCard
-            name="灵猫回复.md"
-            url={textDownloadUrl(fullText)}
-            mimeType="text/markdown"
-          />
-        ) : null}
       </div>
     </div>
   )

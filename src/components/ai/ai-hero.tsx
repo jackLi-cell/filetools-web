@@ -114,6 +114,15 @@ export function AiHero() {
   const hasReadyAttachment = attachments.some((a) => a.status === "ready" && a.serverId)
   const hasConversation = messages.length > 0
 
+  useEffect(() => {
+    if (!hasConversation || typeof document === "undefined") return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [hasConversation])
+
   const updateAttachment = useCallback((localId: string, patch: Partial<AttachmentItem>) => {
     setAttachments((prev) => prev.map((a) => (a.localId === localId ? { ...a, ...patch } : a)))
   }, [])
@@ -319,7 +328,7 @@ export function AiHero() {
             placeholder="告诉我你要做什么... 例如：把这份 PDF 总结成 5 条要点"
             rows={1}
             className={cn(
-              "block max-h-[200px] min-h-[56px] w-full resize-none rounded-xl bg-transparent px-3 py-3 text-sm leading-6 text-gray-900 outline-none placeholder:text-gray-400",
+              "block max-h-[180px] min-h-[52px] w-full resize-none rounded-xl bg-transparent px-3 py-3 text-[13px] leading-5 text-gray-900 outline-none placeholder:text-gray-400",
               "overflow-y-auto"
             )}
           />
@@ -412,7 +421,9 @@ export function AiHero() {
     <div
       className={cn(
         "w-full transition-all duration-700 ease-out",
-        hasConversation ? "mx-auto flex min-h-[calc(100vh-150px)] max-w-4xl flex-col justify-end pt-4" : ""
+        hasConversation
+          ? "ai-chat-active mx-auto flex h-full max-w-4xl flex-col overflow-hidden pt-3 md:pt-4"
+          : ""
       )}
     >
       {!hasConversation ? (
@@ -422,7 +433,7 @@ export function AiHero() {
         </div>
       ) : (
         <>
-          <div className="animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="min-h-0 flex-1 animate-in fade-in slide-in-from-bottom-3 duration-500">
             <ConversationPanel
               messages={messages}
               onClear={onClear}
@@ -431,7 +442,7 @@ export function AiHero() {
               error={error}
             />
           </div>
-          <div className="sticky bottom-4 mt-5 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="shrink-0 pb-3 pt-3 animate-in fade-in slide-in-from-bottom-4 duration-700 md:pb-4">
             {composer}
           </div>
         </>

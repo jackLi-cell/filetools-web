@@ -18,6 +18,12 @@ import {
 } from "./ai-upstream-manager.js"
 import { attachmentStore, type StoredAttachment } from "./attachment-store.js"
 import { buildTools, buildToolsCatalog, buildAttachmentsHint } from "./tool-registry.js"
+import {
+  buildOutputFileInstruction,
+  createGeneratedFile,
+  detectAiOutputFileRequest,
+  type AiOutputFileRequest,
+} from "./ai-generated-files.js"
 
 /**
  * 所有上游都失败时抛出，路由层捕获后返回 503
@@ -56,6 +62,8 @@ const prisma = new PrismaClient()
 
 const SYSTEM_PROMPT_CACHE_TTL_MS = 60_000
 const ENABLED_CACHE_TTL_MS = 30_000
+const MANUAL_STREAM_CHUNK_DELAY_MS = 12
+type DataStreamString = ReturnType<typeof formatDataStreamPart>
 type OpenAIApiMode = "chat" | "responses"
 
 let systemPromptCache: { value: string; ts: number } | null = null
@@ -360,14 +368,95 @@ function extractResponsesUsage(json: unknown): { promptTokens: number; completio
   return { promptTokens, completionTokens, totalTokens }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function splitManualStreamText(text: string): string[] {
+  if (!text) return []
+  const chunks: string[] = []
+  let buffer = ""
+  let weight = 0
+
+  for (const char of Array.from(text)) {
+    buffer += char
+    weight += /[\u3400-\u9fff]/.test(char) ? 2 : 1
+    if (char === "\n" || weight >= 36) {
+      chunks.push(buffer)
+      buffer = ""
+      weight = 0
+    }
+  }
+
+  if (buffer) chunks.push(buffer)
+  return chunks
+}
+
+async function enqueueTextChunks(
+  write: (part: DataStreamString) => void,
+  chunks: string[],
+) {
+  for (let i = 0; i < chunks.length; i++) {
+    write(formatDataStreamPart("text", chunks[i]))
+    if (i < chunks.length - 1) {
+      await sleep(MANUAL_STREAM_CHUNK_DELAY_MS)
+    }
+  }
+}
+
+function createManualDataStream(
+  chunks: string[],
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number },
+  sendFinish: boolean,
+): ReadableStream<DataStreamString> {
+  return new ReadableStream<DataStreamString>({
+    async start(controller) {
+      try {
+        await enqueueTextChunks((part) => controller.enqueue(part), chunks)
+        controller.enqueue(formatDataStreamPart("finish_step", {
+          finishReason: "stop",
+          usage,
+          isContinued: false,
+        }))
+        if (sendFinish) {
+          controller.enqueue(formatDataStreamPart("finish_message", {
+            finishReason: "stop",
+            usage,
+          }))
+        }
+      } finally {
+        controller.close()
+      }
+    },
+  })
+}
+
+function createManualEncodedDataStream(
+  chunks: string[],
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number },
+  sendFinish: boolean,
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return createManualDataStream(chunks, usage, sendFinish).pipeThrough(
+    new TransformStream<DataStreamString, Uint8Array>({
+      transform(part, controller) {
+        controller.enqueue(encoder.encode(part))
+      },
+    }),
+  )
+}
+
 function createManualTextResult(
   text: string,
   usage: { promptTokens: number; completionTokens: number; totalTokens: number },
 ): StreamTextResult<ToolSet, never> {
-  const usagePromise = Promise.resolve(usage)
+  const chunks = splitManualStreamText(text)
+  const streamDurationMs = Math.max(0, chunks.length - 1) * MANUAL_STREAM_CHUNK_DELAY_MS
+  const textPromise = sleep(streamDurationMs).then(() => text)
+  const usagePromise = textPromise.then(() => usage)
   return {
     warnings: Promise.resolve(undefined),
-    text: Promise.resolve(text),
+    text: textPromise,
     usage: usagePromise,
     sources: Promise.resolve([]),
     files: Promise.resolve([]),
@@ -382,14 +471,24 @@ function createManualTextResult(
     request: Promise.resolve({}),
     response: Promise.resolve({ id: undefined, timestamp: new Date(), modelId: "", messages: [] }),
     textStream: new ReadableStream<string>({
-      start(controller) {
-        controller.enqueue(text)
+      async start(controller) {
+        for (let i = 0; i < chunks.length; i++) {
+          controller.enqueue(chunks[i])
+          if (i < chunks.length - 1) {
+            await sleep(MANUAL_STREAM_CHUNK_DELAY_MS)
+          }
+        }
         controller.close()
       },
     }) as unknown as StreamTextResult<ToolSet, never>["textStream"],
     fullStream: new ReadableStream({
-      start(controller) {
-        controller.enqueue({ type: "text-delta", textDelta: text })
+      async start(controller) {
+        for (let i = 0; i < chunks.length; i++) {
+          controller.enqueue({ type: "text-delta", textDelta: chunks[i] })
+          if (i < chunks.length - 1) {
+            await sleep(MANUAL_STREAM_CHUNK_DELAY_MS)
+          }
+        }
         controller.enqueue({
           type: "finish",
           finishReason: "stop",
@@ -407,84 +506,51 @@ function createManualTextResult(
     }) as unknown as StreamTextResult<ToolSet, never>["experimental_partialOutputStream"],
     consumeStream: async () => undefined,
     toDataStream: (options?: Parameters<StreamTextResult<ToolSet, never>["toDataStream"]>[0]) => {
-      return new ReadableStream<Uint8Array>({
-        start(controller) {
-          const encoder = new TextEncoder()
-          controller.enqueue(encoder.encode(formatDataStreamPart("text", text)))
-          controller.enqueue(encoder.encode(formatDataStreamPart("finish_step", {
-            finishReason: "stop",
-            usage,
-            isContinued: false,
-          })))
-          if (options?.experimental_sendFinish !== false) {
-            controller.enqueue(encoder.encode(formatDataStreamPart("finish_message", {
-              finishReason: "stop",
-              usage,
-            })))
-          }
-          controller.close()
-        },
-      })
+      return createManualEncodedDataStream(chunks, usage, options?.experimental_sendFinish !== false)
     },
     mergeIntoDataStream: (
       dataStream: Parameters<StreamTextResult<ToolSet, never>["mergeIntoDataStream"]>[0],
       options?: Parameters<StreamTextResult<ToolSet, never>["mergeIntoDataStream"]>[1],
     ) => {
-      dataStream.write(formatDataStreamPart("text", text))
-      dataStream.write(formatDataStreamPart("finish_step", {
-        finishReason: "stop",
-        usage,
-        isContinued: false,
-      }))
-      if (options?.experimental_sendFinish !== false) {
-        dataStream.write(formatDataStreamPart("finish_message", {
-          finishReason: "stop",
-          usage,
-        }))
-      }
+      dataStream.merge(createManualDataStream(chunks, usage, options?.experimental_sendFinish !== false))
     },
     pipeDataStreamToResponse(
       response: import("http").ServerResponse,
-      options?: Parameters<typeof pipeDataStreamToResponse>[1],
+      options?: Parameters<StreamTextResult<ToolSet, never>["pipeDataStreamToResponse"]>[1],
     ) {
       pipeDataStreamToResponse(response, {
         ...options,
-        execute: (writer) => {
-          writer.write(formatDataStreamPart("text", text))
+        execute: async (writer) => {
+          await enqueueTextChunks((part) => writer.write(part), chunks)
           writer.write(formatDataStreamPart("finish_step", {
             finishReason: "stop",
             usage,
             isContinued: false,
           }))
-          writer.write(formatDataStreamPart("finish_message", {
-            finishReason: "stop",
-            usage,
-          }))
+          if (options?.experimental_sendFinish !== false) {
+            writer.write(formatDataStreamPart("finish_message", {
+              finishReason: "stop",
+              usage,
+            }))
+          }
         },
       })
     },
     pipeTextStreamToResponse(response: import("http").ServerResponse, init?: ResponseInit) {
       if (init?.status) response.statusCode = init.status
       response.setHeader("Content-Type", "text/plain; charset=utf-8")
-      response.end(text)
+      void (async () => {
+        for (let i = 0; i < chunks.length; i++) {
+          response.write(chunks[i])
+          if (i < chunks.length - 1) {
+            await sleep(MANUAL_STREAM_CHUNK_DELAY_MS)
+          }
+        }
+        response.end()
+      })()
     },
     toDataStreamResponse(options?: ResponseInit) {
-      const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-          const encoder = new TextEncoder()
-          controller.enqueue(encoder.encode(formatDataStreamPart("text", text)))
-          controller.enqueue(encoder.encode(formatDataStreamPart("finish_step", {
-            finishReason: "stop",
-            usage,
-            isContinued: false,
-          })))
-          controller.enqueue(encoder.encode(formatDataStreamPart("finish_message", {
-            finishReason: "stop",
-            usage,
-          })))
-          controller.close()
-        },
-      })
+      const stream = createManualEncodedDataStream(chunks, usage, true)
       return new Response(stream, {
         ...options,
         headers: {
@@ -496,9 +562,64 @@ function createManualTextResult(
       })
     },
     toTextStreamResponse(init?: ResponseInit) {
-      return new Response(text, init)
+      const encoder = new TextEncoder()
+      return new Response(new ReadableStream<Uint8Array>({
+        async start(controller) {
+          for (let i = 0; i < chunks.length; i++) {
+            controller.enqueue(encoder.encode(chunks[i]))
+            if (i < chunks.length - 1) {
+              await sleep(MANUAL_STREAM_CHUNK_DELAY_MS)
+            }
+          }
+          controller.close()
+        },
+      }), init)
     },
   } as unknown as StreamTextResult<ToolSet, never>
+}
+
+function wrapResultWithGeneratedFile(
+  result: StreamTextResult<ToolSet, never>,
+  fileRequest: AiOutputFileRequest | null,
+): StreamTextResult<ToolSet, never> {
+  if (!fileRequest) return result
+
+  return {
+    ...result,
+    pipeDataStreamToResponse(
+      response: import("http").ServerResponse,
+      options?: Parameters<StreamTextResult<ToolSet, never>["pipeDataStreamToResponse"]>[1],
+    ) {
+      pipeDataStreamToResponse(response, {
+        ...options,
+        execute: async (writer) => {
+          result.mergeIntoDataStream(writer, {
+            ...(options ?? {}),
+            experimental_sendFinish: false,
+          })
+
+          const [text, usage, finishReason] = await Promise.all([
+            result.text,
+            result.usage,
+            result.finishReason,
+          ])
+          const generated = await createGeneratedFile(fileRequest, text)
+          if (generated) {
+            writer.write(formatDataStreamPart("file", {
+              data: generated.base64,
+              mimeType: generated.mimeType,
+            }))
+          }
+          if (options?.experimental_sendFinish !== false) {
+            writer.write(formatDataStreamPart("finish_message", {
+              finishReason,
+              usage,
+            }))
+          }
+        },
+      })
+    },
+  } as StreamTextResult<ToolSet, never>
 }
 
 function extractChatCompletionText(json: unknown): string {
@@ -704,6 +825,7 @@ export async function streamChat(
 ): Promise<StreamTextResult<ToolSet, never>> {
   const { messages, abortSignal, userId, attachmentIds } = params
   const isAuth = typeof userId === "number"
+  const generatedFileRequest = detectAiOutputFileRequest(messages)
 
   const upstreams = await getUpstreams()
   if (upstreams.length === 0) {
@@ -732,7 +854,8 @@ export async function streamChat(
   const attachmentsHint = buildAttachmentsHint(
     attachments.map((a) => ({ id: a.id, name: a.name, mime: a.mime })),
   )
-  const systemPrompt = `${baseSystemPrompt}\n\n${toolsCatalog}${attachmentsHint}`
+  const outputFileInstruction = buildOutputFileInstruction(generatedFileRequest)
+  const systemPrompt = `${baseSystemPrompt}\n\n${toolsCatalog}${attachmentsHint}${outputFileInstruction}`
 
   // 3) 总长度截断（system 不参与，messages 历史按 maxContextChars 截断）
   const truncated = truncateMessages(messagesWithAttachments, env.ai.maxContextChars)
@@ -801,7 +924,7 @@ export async function streamChat(
           })
         })
 
-      return result
+      return wrapResultWithGeneratedFile(result, generatedFileRequest)
     } catch (err) {
       const detail = describeError(err)
       console.error(

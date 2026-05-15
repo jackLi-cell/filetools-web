@@ -8,10 +8,10 @@ const popularTools = tools.filter(t => t.version === "v0.1").slice(0, 8)
 
 export default function HomePage() {
   return (
-    <div className="flex flex-col">
-      <section className="border-b bg-gradient-to-b from-blue-50/50 to-white py-12 md:py-20">
+    <div className="home-page flex flex-col">
+      <section className="home-ai-shell border-b bg-gradient-to-b from-blue-50/50 to-white py-12 md:py-20">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-8 md:mb-10">
+          <div className="ai-landing-copy text-center mb-8 md:mb-10">
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
               灵猫助手 · 告诉我你要做什么
             </h1>
@@ -23,7 +23,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="py-12 md:py-16">
+      <section className="home-after-ai py-12 md:py-16">
         <div className="container mx-auto px-4">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">工具分类</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
@@ -42,7 +42,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="py-12 md:py-16 bg-gray-50">
+      <section className="home-after-ai py-12 md:py-16 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-900">热门工具</h2>
@@ -72,7 +72,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="py-12 md:py-16">
+      <section className="home-after-ai py-12 md:py-16">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center p-6">
