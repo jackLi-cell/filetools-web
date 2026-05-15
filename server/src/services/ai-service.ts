@@ -62,7 +62,7 @@ const prisma = new PrismaClient()
 
 const SYSTEM_PROMPT_CACHE_TTL_MS = 60_000
 const ENABLED_CACHE_TTL_MS = 30_000
-const MANUAL_STREAM_CHUNK_DELAY_MS = 12
+const MANUAL_STREAM_CHUNK_DELAY_MS = 45
 type DataStreamString = ReturnType<typeof formatDataStreamPart>
 type OpenAIApiMode = "chat" | "responses"
 
