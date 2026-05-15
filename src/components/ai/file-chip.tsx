@@ -1,6 +1,16 @@
 "use client"
 
-import { Loader2, X } from "lucide-react"
+import {
+  File,
+  FileImage,
+  FileJson,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  Presentation,
+  X,
+  type LucideIcon,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export type FileChipStatus = "uploading" | "ready" | "error"
@@ -20,12 +30,13 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
-function iconFor(mime: string, name: string): string {
+function iconFor(mime: string, name: string): LucideIcon {
   const lower = (mime || "").toLowerCase()
   const ext = name.toLowerCase().split(".").pop() ?? ""
-  if (lower.startsWith("image/")) return "🖼️"
-  if (lower === "application/pdf" || ext === "pdf") return "📄"
-  if (lower.includes("word") || ext === "docx" || ext === "doc") return "📝"
+  if (lower.startsWith("image/")) return FileImage
+  if (lower === "application/pdf" || ext === "pdf") return FileText
+  if (lower === "application/json" || ext === "json") return FileJson
+  if (lower.includes("word") || ext === "docx" || ext === "doc") return FileText
   if (
     lower.includes("excel") ||
     lower.includes("spreadsheetml") ||
@@ -34,19 +45,20 @@ function iconFor(mime: string, name: string): string {
     ext === "csv" ||
     lower === "text/csv"
   )
-    return "📊"
+    return FileSpreadsheet
   if (
     lower.includes("powerpoint") ||
     lower.includes("presentationml") ||
     ext === "pptx" ||
     ext === "ppt"
   )
-    return "📽️"
-  if (lower.startsWith("text/") || ext === "txt" || ext === "md" || lower === "application/json") return "📋"
-  return "📎"
+    return Presentation
+  if (lower.startsWith("text/") || ext === "txt" || ext === "md") return FileText
+  return File
 }
 
 export function FileChip({ name, size, mime, status, errorMessage, onRemove }: FileChipProps) {
+  const Icon = iconFor(mime, name)
   return (
     <div
       className={cn(
@@ -59,9 +71,7 @@ export function FileChip({ name, size, mime, status, errorMessage, onRemove }: F
       )}
       title={errorMessage ?? `${name} · ${formatSize(size)}`}
     >
-      <span className="text-base leading-none" aria-hidden="true">
-        {iconFor(mime, name)}
-      </span>
+      <Icon className="h-4 w-4 shrink-0 text-gray-500" aria-hidden="true" />
       <span className="flex min-w-0 flex-col">
         <span className="truncate max-w-[180px] font-medium text-gray-800">{name}</span>
         <span className="text-[10px] text-gray-500">

@@ -5,6 +5,7 @@ import { requireAdmin } from "../../middleware/auth.js"
 import { encrypt, decrypt, maskApiKey } from "../../services/ai-encryption.js"
 import { invalidateCache as invalidateUpstreamCache } from "../../services/ai-upstream-manager.js"
 import {
+  getSystemPrompt,
   invalidateEnabledCache,
   invalidateSystemPromptCache,
   testUpstream,
@@ -178,10 +179,13 @@ router.post("/upstreams/:id/test", ar(async (req: Request, res: Response) => {
     })
     return
   }
+  const systemPrompt = await getSystemPrompt()
   const result = await testUpstream({
     baseUrl: row.baseUrl,
     apiKey,
     model: row.model,
+    systemPrompt,
+    prompt: "这是管理后台上游测试。请用一句中文回复：灵猫助手上游测试成功。",
   })
   res.json({ code: 0, data: result })
 }))

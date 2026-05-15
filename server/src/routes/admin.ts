@@ -72,6 +72,116 @@ router.get("/users", async (req: Request, res: Response) => {
   res.json({ code: 0, data: { users, total, page, totalPages: Math.ceil(total / limit) } })
 })
 
+router.get("/users/:id", async (req: Request, res: Response) => {
+  const userId = Number(req.params.id)
+  if (!Number.isFinite(userId)) {
+    res.status(400).json({ code: 400, message: "无效的用户 ID" })
+    return
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      emailVerified: true,
+      name: true,
+      role: true,
+      credits: true,
+      totalEarned: true,
+      totalSpent: true,
+      lastCheckinDate: true,
+      consecutiveCheckin: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  })
+
+  if (!user) {
+    res.status(404).json({ code: 404, message: "用户不存在" })
+    return
+  }
+
+  const now = new Date()
+  const [sessionCount, lastSession, taskSummary, recentTasks, recentCredits, orders] = await Promise.all([
+    prisma.session.count({ where: { userId, expiresAt: { gt: now } } }),
+    prisma.session.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, ipAddress: true, userAgent: true, createdAt: true, expiresAt: true },
+    }),
+    prisma.processTask.groupBy({
+      by: ["status"],
+      where: { userId },
+      _count: { _all: true },
+    }),
+    prisma.processTask.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: {
+        id: true,
+        toolSlug: true,
+        status: true,
+        inputFileName: true,
+        outputFileName: true,
+        creditsCost: true,
+        errorMessage: true,
+        createdAt: true,
+        completedAt: true,
+      },
+    }),
+    prisma.creditTransaction.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        balanceAfter: true,
+        source: true,
+        toolSlug: true,
+        note: true,
+        createdAt: true,
+      },
+    }),
+    prisma.order.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      select: {
+        id: true,
+        orderNo: true,
+        packageName: true,
+        creditsAmount: true,
+        priceCents: true,
+        paymentMethod: true,
+        paymentChannel: true,
+        paymentStatus: true,
+        paidAt: true,
+        createdAt: true,
+      },
+    }),
+  ])
+
+  res.json({
+    code: 0,
+    data: {
+      user,
+      sessions: { activeCount: sessionCount, last: lastSession },
+      taskSummary: taskSummary.reduce<Record<string, number>>((acc, row) => {
+        acc[row.status] = row._count._all
+        return acc
+      }, {}),
+      recentTasks,
+      recentCredits,
+      orders,
+    },
+  })
+})
+
 router.put("/users/:id/credits", async (req: Request, res: Response) => {
   const userId = Number(req.params.id)
   const { amount, reason } = req.body as { amount: number; reason: string }
@@ -166,7 +276,7 @@ router.put("/category-payment-settings/:category", async (req: Request, res: Res
   await redis.del("tools:category-payment-settings")
   await redis.del("tools:list")
 
-  res.json({ code: 0, message: "妯″潡浠樿垂寮€鍏冲凡鏇存柊" })
+  res.json({ code: 0, message: "模块付费开关已更新" })
 })
 
 router.put("/tools-config/:slug", async (req: Request, res: Response) => {

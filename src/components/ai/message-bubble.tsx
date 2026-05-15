@@ -3,6 +3,7 @@
 import type { UIMessage } from "@ai-sdk/ui-utils"
 import { Markdown } from "@/components/ai/markdown"
 import { ToolCallCard } from "@/components/ai/tool-call-card"
+import { DownloadFileCard } from "@/components/ai/download-file-card"
 import { cn } from "@/lib/utils"
 
 export interface MessageBubbleProps {
@@ -30,6 +31,12 @@ function asNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined
 }
 
+function getFileName(data: string, mimeType?: string): string {
+  if (!data.startsWith("data:")) return "ai-result"
+  const ext = mimeType?.split("/").pop()?.replace("plain", "txt") || "file"
+  return `ai-result.${ext}`
+}
+
 function getMessageText(msg: UIMessage | undefined, fallback?: string): string {
   if (!msg) return fallback ?? ""
   if (msg.parts && msg.parts.length > 0) {
@@ -41,18 +48,37 @@ function getMessageText(msg: UIMessage | undefined, fallback?: string): string {
   return msg.content ?? fallback ?? ""
 }
 
+function textDownloadUrl(text: string): string {
+  return `data:text/markdown;charset=utf-8,${encodeURIComponent(text)}`
+}
+
 export function MessageBubble({ role, message, content, isStreaming }: MessageBubbleProps) {
   if (role === "user") {
     const text = getMessageText(message, content)
+    const attachmentNames = message?.experimental_attachments
+      ?.map((attachment) => attachment.name)
+      .filter((name): name is string => typeof name === "string" && name.length > 0)
     return (
       <div className="flex w-full justify-end">
         <div
           className={cn(
             "max-w-[80%] rounded-2xl rounded-tr-md bg-blue-50 px-4 py-2 text-sm text-gray-900",
-            "whitespace-pre-wrap break-words"
+            "whitespace-pre-wrap break-words animate-in fade-in slide-in-from-bottom-2 duration-500"
           )}
         >
           {text}
+          {attachmentNames && attachmentNames.length > 0 ? (
+            <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+              {attachmentNames.map((name) => (
+                <span
+                  key={name}
+                  className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] text-gray-600"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     )
@@ -62,12 +88,14 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
   const parts = message?.parts ?? []
   const hasParts = parts.length > 0
   const fallbackText = !hasParts ? message?.content ?? content ?? "" : ""
+  const fullText = getMessageText(message, content)
 
   return (
     <div className="flex w-full justify-start">
       <div
         className={cn(
-          "max-w-[80%] space-y-2 rounded-2xl rounded-tl-md border border-gray-200 bg-white px-4 py-3 shadow-sm"
+          "max-w-[80%] space-y-2 rounded-2xl rounded-tl-md border border-gray-200 bg-white px-4 py-3 shadow-sm",
+          "animate-in fade-in slide-in-from-bottom-2 duration-500"
         )}
       >
         {!hasParts && !fallbackText ? (
@@ -87,6 +115,17 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
               const textPart = part as { type: "text"; text: string }
               if (!textPart.text) return null
               return <Markdown key={`text-${i}`} content={textPart.text} />
+            }
+            if (part.type === "file") {
+              const filePart = part as { type: "file"; data: string; mimeType?: string }
+              return (
+                <DownloadFileCard
+                  key={`file-${i}`}
+                  name={getFileName(filePart.data, filePart.mimeType)}
+                  url={filePart.data}
+                  mimeType={filePart.mimeType}
+                />
+              )
             }
             if (part.type === "tool-invocation") {
               const inv = (part as {
@@ -151,6 +190,14 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
           <span
             className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5 animate-pulse bg-gray-500 align-middle"
             aria-hidden="true"
+          />
+        ) : null}
+
+        {!isStreaming && fullText.trim() ? (
+          <DownloadFileCard
+            name="灵猫回复.md"
+            url={textDownloadUrl(fullText)}
+            mimeType="text/markdown"
           />
         ) : null}
       </div>

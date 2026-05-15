@@ -45,7 +45,7 @@ export function ConversationPanel({
   const lastIsAssistant = lastMessage?.role === "assistant"
 
   return (
-    <div className="mx-auto mt-6 w-full max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl animate-in fade-in-0 slide-in-from-bottom-3 duration-500">
       <div className="mb-3 flex items-center justify-end gap-2">
         <Button
           variant="outline"
@@ -69,7 +69,7 @@ export function ConversationPanel({
         </Button>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200/80 bg-gray-50/50 p-3 md:p-4">
+      <div className="flex min-h-[220px] flex-col gap-3 rounded-2xl border border-gray-200/80 bg-gray-50/50 p-3 md:p-4">
         {messages.map((msg, idx) => {
           const isLast = idx === messages.length - 1
           const isStreaming =

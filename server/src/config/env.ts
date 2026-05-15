@@ -42,7 +42,7 @@ export const env = {
     maxContextChars: Number(process.env.AI_MAX_CONTEXT_CHARS || 24000),
     maxFileMb: Number(process.env.AI_MAX_FILE_MB || 20),
     maxTotalMb: Number(process.env.AI_MAX_TOTAL_MB || 30),
-    maxFilesPerTurn: Number(process.env.AI_MAX_FILES_PER_TURN || 3),
+    maxFilesPerTurn: Number(process.env.AI_MAX_FILES_PER_TURN || 5),
     attachmentTtlSec: Number(process.env.AI_ATTACHMENT_TTL_SECONDS || 1800),
     attachmentTotalMb: Number(process.env.AI_ATTACHMENT_TOTAL_MB || 200),
     rateLimitAnonPerMinute: Number(process.env.AI_RATE_LIMIT_ANON_PER_MINUTE || 10),

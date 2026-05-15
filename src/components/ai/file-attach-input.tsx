@@ -9,17 +9,18 @@ const ALLOWED_MIMES = new Set<string>([
   "text/x-markdown",
   "application/pdf",
   "application/json",
-  "application/msword",
+  "application/xml",
+  "application/yaml",
+  "application/x-yaml",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ])
+
+const ALLOWED_EXTENSIONS = /\.(txt|md|markdown|csv|tsv|pdf|json|xml|yml|yaml|log|html|htm|js|ts|jsx|tsx|py|java|c|cpp|h|css|scss|less|sql|sh|conf|ini|toml|docx|xlsx)$/i
 
 const SINGLE_FILE_MAX = 20 * 1024 * 1024
 const TOTAL_MAX = 30 * 1024 * 1024
-const MAX_FILES = 3
+const MAX_FILES = 5
 
 export const FILE_ATTACH_LIMITS = {
   singleFileMax: SINGLE_FILE_MAX,
@@ -32,6 +33,41 @@ export type FileAttachError =
   | { kind: "total-exceeded"; current: number; incoming: number }
   | { kind: "too-many"; existing: number }
   | { kind: "mime-rejected"; file: File }
+
+export function validateAttachFiles(
+  files: File[],
+  existingCount: number,
+  existingTotalBytes: number
+): { accepted: File[]; errors: FileAttachError[] } {
+  const accepted: File[] = []
+  const errors: FileAttachError[] = []
+  let count = existingCount
+  let total = existingTotalBytes
+
+  for (const file of files) {
+    if (count >= MAX_FILES) {
+      errors.push({ kind: "too-many", existing: count })
+      break
+    }
+    if (!isAcceptedFile(file)) {
+      errors.push({ kind: "mime-rejected", file })
+      continue
+    }
+    if (file.size > SINGLE_FILE_MAX) {
+      errors.push({ kind: "too-large", file })
+      continue
+    }
+    if (total + file.size > TOTAL_MAX) {
+      errors.push({ kind: "total-exceeded", current: total, incoming: file.size })
+      continue
+    }
+    accepted.push(file)
+    count += 1
+    total += file.size
+  }
+
+  return { accepted, errors }
+}
 
 export interface FileAttachInputHandle {
   pick: () => void
@@ -50,10 +86,11 @@ export interface FileAttachInputProps {
   disabled?: boolean
 }
 
-function isAcceptedMime(mime: string): boolean {
-  if (!mime) return true // some browsers don't set mime, allow and let backend decide
+function isAcceptedFile(file: File): boolean {
+  const mime = file.type
+  if (ALLOWED_EXTENSIONS.test(file.name)) return true
+  if (!mime) return ALLOWED_EXTENSIONS.test(file.name)
   if (mime.startsWith("text/")) return true
-  if (mime.startsWith("image/")) return true
   return ALLOWED_MIMES.has(mime)
 }
 
@@ -75,31 +112,9 @@ export const FileAttachInput = forwardRef<FileAttachInputHandle, FileAttachInput
     const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const fl = e.target.files
       if (!fl || fl.length === 0) return
-      const files = Array.from(fl)
-      let count = existingCount
-      let total = existingTotalBytes
-
-      for (const f of files) {
-        if (count >= MAX_FILES) {
-          onError({ kind: "too-many", existing: count })
-          break
-        }
-        if (!isAcceptedMime(f.type)) {
-          onError({ kind: "mime-rejected", file: f })
-          continue
-        }
-        if (f.size > SINGLE_FILE_MAX) {
-          onError({ kind: "too-large", file: f })
-          continue
-        }
-        if (total + f.size > TOTAL_MAX) {
-          onError({ kind: "total-exceeded", current: total, incoming: f.size })
-          continue
-        }
-        onAccept(f)
-        count += 1
-        total += f.size
-      }
+      const { accepted, errors } = validateAttachFiles(Array.from(fl), existingCount, existingTotalBytes)
+      errors.forEach(onError)
+      accepted.forEach(onAccept)
 
       // reset so same file can be picked again
       e.target.value = ""
@@ -113,7 +128,7 @@ export const FileAttachInput = forwardRef<FileAttachInputHandle, FileAttachInput
         className="hidden"
         onChange={onChange}
         disabled={disabled}
-        accept="text/*,image/*,application/pdf,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        accept=".txt,.md,.markdown,.csv,.tsv,.pdf,.json,.xml,.yml,.yaml,.log,.html,.htm,.js,.ts,.jsx,.tsx,.py,.java,.c,.cpp,.h,.css,.scss,.less,.sql,.sh,.conf,.ini,.toml,.docx,.xlsx,text/*,application/pdf,application/json,application/xml,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       />
     )
   }

@@ -28,7 +28,7 @@ interface Upstream {
   healthyAt?: string | null
 }
 
-type TestState = { running: boolean; result?: { ok: boolean; latencyMs?: number; error?: string } }
+type TestState = { running: boolean; result?: { ok: boolean; latencyMs?: number; text?: string; error?: string } }
 
 type SettingsMap = Record<string, string>
 
@@ -102,8 +102,8 @@ export default function AdminAiPage() {
   const [loadingUsage, setLoadingUsage] = useState(false)
 
   useEffect(() => {
-    if (!loading && !user) router.push("/login?next=/admin/ai")
-    else if (!loading && user?.role !== "admin") router.push("/account")
+    if (!loading && !user) router.push("/admin/login?next=/admin/ai")
+    else if (!loading && user?.role !== "admin") router.push("/admin/login")
   }, [loading, user, router])
 
   const fetchUpstreams = async () => {
@@ -189,13 +189,13 @@ export default function AdminAiPage() {
 
   const onTest = async (u: Upstream) => {
     setTestStates((prev) => ({ ...prev, [u.id]: { running: true } }))
-    const res = await api.post<{ ok: boolean; latencyMs?: number; error?: string }>(
+    const res = await api.post<{ ok: boolean; latencyMs?: number; text?: string; error?: string }>(
       `/api/admin/ai/upstreams/${u.id}/test`,
       {}
     )
     const result =
       res.code === 0 && res.data
-        ? { ok: !!res.data.ok, latencyMs: res.data.latencyMs, error: res.data.error }
+        ? { ok: !!res.data.ok, latencyMs: res.data.latencyMs, text: res.data.text, error: res.data.error }
         : { ok: false, error: res.message || "请求失败" }
     setTestStates((prev) => ({ ...prev, [u.id]: { running: false, result } }))
     // refresh row stats
@@ -376,7 +376,7 @@ export default function AdminAiPage() {
                               }`}
                             >
                               {test.result.ok
-                                ? `OK · ${test.result.latencyMs ?? 0}ms`
+                                ? `OK · ${test.result.latencyMs ?? 0}ms${test.result.text ? ` · ${test.result.text.slice(0, 40)}` : ""}`
                                 : `失败：${test.result.error || "-"}`}
                             </div>
                           )}

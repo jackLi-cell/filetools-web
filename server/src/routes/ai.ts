@@ -162,6 +162,25 @@ router.get("/health", async (_req: Request, res: Response) => {
 
 const MAX_FILE_BYTES = env.ai.maxFileMb * 1024 * 1024
 
+function normalizeUploadedFileName(name: string | undefined): string {
+  const fallback = "unnamed"
+  if (!name) return fallback
+  const trimmed = name.trim()
+  if (!trimmed) return fallback
+
+  try {
+    const decoded = Buffer.from(trimmed, "latin1").toString("utf8")
+    const hasMojibake = /[ÃÂ¤åæçèéä»�ï¿½]/.test(trimmed)
+    if (hasMojibake && decoded && !decoded.includes("\uFFFD")) {
+      return decoded
+    }
+  } catch {
+    // keep original
+  }
+
+  return trimmed
+}
+
 /**
  * POST /api/ai/attach (multipart/form-data)
  *
@@ -260,14 +279,15 @@ router.post("/attach", softAuth, checkAiEnabled, aiAttachRateLimit, (req: Reques
     stream.on("end", async () => {
       if (limitHit || responded) return
       const buffer = Buffer.concat(chunks, total)
+      const fileName = normalizeUploadedFileName(info.filename)
       try {
-        const extracted = await extractText(buffer, info.mimeType || "application/octet-stream", info.filename || "unnamed")
+        const extracted = await extractText(buffer, info.mimeType || "application/octet-stream", fileName)
         let stored
         try {
           stored = attachmentStore.put({
             buffer,
             mime: info.mimeType || "application/octet-stream",
-            name: info.filename || "unnamed",
+            name: fileName,
             size: total,
             extractedText: extracted.text,
             meta: extracted.meta,

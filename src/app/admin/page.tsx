@@ -28,8 +28,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!loading) {
-      if (!user) router.push("/login?next=/admin")
-      else if (user?.role !== "admin") router.push("/account")
+      if (!user) router.push("/admin/login?next=/admin")
+      else if (user?.role !== "admin") router.push("/admin/login")
     }
   }, [loading, user, router])
 

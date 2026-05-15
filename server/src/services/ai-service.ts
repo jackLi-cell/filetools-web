@@ -254,6 +254,11 @@ function getOpenAIApiMode(model: string): OpenAIApiMode {
   return "chat"
 }
 
+function shouldUseManualChatCompletions(model: string): boolean {
+  const normalized = model.trim().toLowerCase()
+  return normalized.includes("deepseek") || normalized.includes("claude")
+}
+
 function getOpenAIModel(
   provider: ReturnType<typeof createOpenAI>,
   model: string,
@@ -355,6 +360,267 @@ function extractResponsesUsage(json: unknown): { promptTokens: number; completio
   return { promptTokens, completionTokens, totalTokens }
 }
 
+function createManualTextResult(
+  text: string,
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number },
+): StreamTextResult<ToolSet, never> {
+  const usagePromise = Promise.resolve(usage)
+  return {
+    warnings: Promise.resolve(undefined),
+    text: Promise.resolve(text),
+    usage: usagePromise,
+    sources: Promise.resolve([]),
+    files: Promise.resolve([]),
+    finishReason: Promise.resolve("stop"),
+    providerMetadata: Promise.resolve(undefined),
+    experimental_providerMetadata: Promise.resolve(undefined),
+    reasoning: Promise.resolve(undefined),
+    reasoningDetails: Promise.resolve([]),
+    toolCalls: Promise.resolve([]),
+    toolResults: Promise.resolve([]),
+    steps: Promise.resolve([]),
+    request: Promise.resolve({}),
+    response: Promise.resolve({ id: undefined, timestamp: new Date(), modelId: "", messages: [] }),
+    textStream: new ReadableStream<string>({
+      start(controller) {
+        controller.enqueue(text)
+        controller.close()
+      },
+    }) as unknown as StreamTextResult<ToolSet, never>["textStream"],
+    fullStream: new ReadableStream({
+      start(controller) {
+        controller.enqueue({ type: "text-delta", textDelta: text })
+        controller.enqueue({
+          type: "finish",
+          finishReason: "stop",
+          usage,
+          response: { id: undefined, timestamp: new Date(), modelId: "" },
+          providerMetadata: undefined,
+        })
+        controller.close()
+      },
+    }) as unknown as StreamTextResult<ToolSet, never>["fullStream"],
+    experimental_partialOutputStream: new ReadableStream({
+      start(controller) {
+        controller.close()
+      },
+    }) as unknown as StreamTextResult<ToolSet, never>["experimental_partialOutputStream"],
+    consumeStream: async () => undefined,
+    toDataStream: (options?: Parameters<StreamTextResult<ToolSet, never>["toDataStream"]>[0]) => {
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          const encoder = new TextEncoder()
+          controller.enqueue(encoder.encode(formatDataStreamPart("text", text)))
+          controller.enqueue(encoder.encode(formatDataStreamPart("finish_step", {
+            finishReason: "stop",
+            usage,
+            isContinued: false,
+          })))
+          if (options?.experimental_sendFinish !== false) {
+            controller.enqueue(encoder.encode(formatDataStreamPart("finish_message", {
+              finishReason: "stop",
+              usage,
+            })))
+          }
+          controller.close()
+        },
+      })
+    },
+    mergeIntoDataStream: (
+      dataStream: Parameters<StreamTextResult<ToolSet, never>["mergeIntoDataStream"]>[0],
+      options?: Parameters<StreamTextResult<ToolSet, never>["mergeIntoDataStream"]>[1],
+    ) => {
+      dataStream.write(formatDataStreamPart("text", text))
+      dataStream.write(formatDataStreamPart("finish_step", {
+        finishReason: "stop",
+        usage,
+        isContinued: false,
+      }))
+      if (options?.experimental_sendFinish !== false) {
+        dataStream.write(formatDataStreamPart("finish_message", {
+          finishReason: "stop",
+          usage,
+        }))
+      }
+    },
+    pipeDataStreamToResponse(
+      response: import("http").ServerResponse,
+      options?: Parameters<typeof pipeDataStreamToResponse>[1],
+    ) {
+      pipeDataStreamToResponse(response, {
+        ...options,
+        execute: (writer) => {
+          writer.write(formatDataStreamPart("text", text))
+          writer.write(formatDataStreamPart("finish_step", {
+            finishReason: "stop",
+            usage,
+            isContinued: false,
+          }))
+          writer.write(formatDataStreamPart("finish_message", {
+            finishReason: "stop",
+            usage,
+          }))
+        },
+      })
+    },
+    pipeTextStreamToResponse(response: import("http").ServerResponse, init?: ResponseInit) {
+      if (init?.status) response.statusCode = init.status
+      response.setHeader("Content-Type", "text/plain; charset=utf-8")
+      response.end(text)
+    },
+    toDataStreamResponse(options?: ResponseInit) {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const encoder = new TextEncoder()
+          controller.enqueue(encoder.encode(formatDataStreamPart("text", text)))
+          controller.enqueue(encoder.encode(formatDataStreamPart("finish_step", {
+            finishReason: "stop",
+            usage,
+            isContinued: false,
+          })))
+          controller.enqueue(encoder.encode(formatDataStreamPart("finish_message", {
+            finishReason: "stop",
+            usage,
+          })))
+          controller.close()
+        },
+      })
+      return new Response(stream, {
+        ...options,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          ...(options?.headers instanceof Headers
+            ? Object.fromEntries(options.headers.entries())
+            : (options?.headers as Record<string, string> | undefined)),
+        },
+      })
+    },
+    toTextStreamResponse(init?: ResponseInit) {
+      return new Response(text, init)
+    },
+  } as unknown as StreamTextResult<ToolSet, never>
+}
+
+function extractChatCompletionText(json: unknown): string {
+  const root = json as {
+    output_text?: unknown
+    choices?: Array<{
+      text?: unknown
+      message?: {
+        content?: unknown
+        reasoning_content?: unknown
+        refusal?: unknown
+      }
+      delta?: {
+        content?: unknown
+        reasoning_content?: unknown
+      }
+    }>
+  }
+  if (typeof root.output_text === "string") return root.output_text
+  const first = root.choices?.[0]
+  const message = first?.message
+  if (typeof message?.content === "string") return message.content
+  if (Array.isArray(message?.content)) {
+    return message.content
+      .map((part) => {
+        if (typeof part === "string") return part
+        if (part && typeof part === "object" && "text" in part) {
+          const text = (part as { text?: unknown }).text
+          return typeof text === "string" ? text : ""
+        }
+        return ""
+      })
+      .filter(Boolean)
+      .join("")
+  }
+  if (typeof message?.reasoning_content === "string") return message.reasoning_content
+  if (typeof message?.refusal === "string") return message.refusal
+  if (typeof first?.text === "string") return first.text
+  if (typeof first?.delta?.content === "string") return first.delta.content
+  if (typeof first?.delta?.reasoning_content === "string") return first.delta.reasoning_content
+  return ""
+}
+
+function extractChatCompletionUsage(json: unknown): { promptTokens: number; completionTokens: number; totalTokens: number } {
+  const usage = (json as { usage?: Record<string, unknown> }).usage ?? {}
+  const promptTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0) || 0
+  const completionTokens = Number(usage.completion_tokens ?? usage.output_tokens ?? 0) || 0
+  const totalTokens = Number(usage.total_tokens ?? promptTokens + completionTokens) || 0
+  return { promptTokens, completionTokens, totalTokens }
+}
+
+async function tryChatCompletionsGenerate(opts: {
+  upstream: Upstream
+  systemPrompt: string
+  messages: CoreMessage[]
+  abortSignal?: AbortSignal
+}): Promise<StreamTextResult<ToolSet, never>> {
+  const { upstream, systemPrompt, messages, abortSignal } = opts
+  const inputMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+    { role: "system", content: systemPrompt },
+  ]
+
+  for (const message of messages) {
+    if (message.role !== "user" && message.role !== "assistant" && message.role !== "system") continue
+    const text = messageContentToText(message.content)
+    if (!text.trim()) continue
+    inputMessages.push({
+      role: message.role === "assistant" ? "assistant" : message.role === "system" ? "system" : "user",
+      content: text,
+    })
+  }
+
+  const url = joinUrl(upstream.baseUrl, "/chat/completions")
+  const body = {
+    model: upstream.model,
+    messages: inputMessages,
+    temperature: 0.5,
+    max_tokens: env.ai.maxOutputTokens,
+    stream: false,
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${upstream.apiKey}`,
+    },
+    body: JSON.stringify(body),
+    signal: abortSignal,
+  })
+  const responseText = await response.text()
+  let json: unknown
+  try {
+    json = responseText ? JSON.parse(responseText) : {}
+  } catch (cause) {
+    throw createUpstreamError("Invalid JSON response", {
+      status: response.status,
+      url,
+      responseBody: responseText.slice(0, 1500),
+      cause,
+    })
+  }
+  const upstreamError = (json as { error?: { message?: string } }).error
+  if (!response.ok || upstreamError) {
+    throw createUpstreamError(upstreamError?.message || `Chat Completions API returned ${response.status}`, {
+      status: response.status,
+      url,
+      responseBody: responseText.slice(0, 1500),
+    })
+  }
+
+  const text = extractChatCompletionText(json)
+  const usage = extractChatCompletionUsage(json)
+  if (!text.trim()) {
+    throw createUpstreamError("Chat Completions API returned empty text", {
+      status: response.status,
+      url,
+      responseBody: responseText.slice(0, 1500),
+    })
+  }
+  return createManualTextResult(text, usage)
+}
+
 async function tryResponsesGenerate(opts: {
   upstream: Upstream
   systemPrompt: string
@@ -424,30 +690,7 @@ async function tryResponsesGenerate(opts: {
     })
   }
 
-  const usagePromise = Promise.resolve(usage)
-  return {
-    usage: usagePromise,
-    pipeDataStreamToResponse(
-      response: import("http").ServerResponse,
-      options?: Parameters<typeof pipeDataStreamToResponse>[1],
-    ) {
-      pipeDataStreamToResponse(response, {
-        ...options,
-        execute: (writer) => {
-          writer.write(formatDataStreamPart("text", text))
-          writer.write(formatDataStreamPart("finish_step", {
-            finishReason: "stop",
-            usage,
-            isContinued: false,
-          }))
-          writer.write(formatDataStreamPart("finish_message", {
-            finishReason: "stop",
-            usage,
-          }))
-        },
-      })
-    },
-  } as unknown as StreamTextResult<ToolSet, never>
+  return createManualTextResult(text, usage)
 }
 
 /**
@@ -707,13 +950,18 @@ async function tryStream(opts: {
   )
 
   const apiMode = getOpenAIApiMode(upstream.model)
+  const manualChat = apiMode === "chat" && shouldUseManualChatCompletions(upstream.model)
   console.log(
-    `[ai-service] -> upstream "${upstream.name}" using ${apiMode} API` +
+    `[ai-service] -> upstream "${upstream.name}" using ` +
+      `${manualChat ? "chat API (manual compatible stream)" : `${apiMode} API`}` +
       `${apiMode === "responses" ? " (manual compatible stream)" : ""} for model=${upstream.model}`,
   )
 
   if (apiMode === "responses") {
     return tryResponsesGenerate({ upstream, systemPrompt, messages, abortSignal })
+  }
+  if (manualChat) {
+    return tryChatCompletionsGenerate({ upstream, systemPrompt, messages, abortSignal })
   }
 
   const provider = createOpenAI({
@@ -754,7 +1002,9 @@ export async function testUpstream(opts: {
   baseUrl: string
   apiKey: string
   model: string
-}): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
+  systemPrompt?: string
+  prompt?: string
+}): Promise<{ ok: boolean; latencyMs: number; text?: string; error?: string }> {
   const startedAt = Date.now()
   const apiKeyMasked = opts.apiKey
     ? `${opts.apiKey.slice(0, 6)}...${opts.apiKey.slice(-4)}`
@@ -763,49 +1013,65 @@ export async function testUpstream(opts: {
     `[ai-service] testUpstream -> baseUrl=${opts.baseUrl} model=${opts.model} apiKey=${apiKeyMasked}`,
   )
   try {
+    const apiMode = getOpenAIApiMode(opts.model)
+    const manualChat = apiMode === "chat" && shouldUseManualChatCompletions(opts.model)
+    const systemPrompt =
+      opts.systemPrompt || "你是灵猫助手的上游测试模型。请用一句中文说明测试成功。"
+    const prompt = opts.prompt || "测试"
+    console.log(
+      `[ai-service] testUpstream using ` +
+        `${manualChat ? "chat API (manual compatible stream)" : `${apiMode} API`}` +
+        `${apiMode === "responses" ? " (manual compatible stream)" : ""} for model=${opts.model}`,
+    )
+    const upstream: Upstream = {
+      id: "test",
+      dbId: null,
+      name: "test",
+      baseUrl: opts.baseUrl,
+      apiKey: opts.apiKey,
+      model: opts.model,
+      visionModel: null,
+      priority: 0,
+      enabled: true,
+      failCount: 0,
+      healthyAt: null,
+      lastError: null,
+    }
+    if (apiMode === "responses") {
+      const result = await tryResponsesGenerate({
+        upstream,
+        systemPrompt,
+        messages: [{ role: "user", content: prompt }],
+      })
+      const [text] = await Promise.all([result.text, result.usage])
+      const latencyMs = Date.now() - startedAt
+      console.log(`[ai-service] testUpstream OK: ${latencyMs}ms`)
+      return { ok: true, latencyMs, text }
+    }
+    if (manualChat) {
+      const result = await tryChatCompletionsGenerate({
+        upstream,
+        systemPrompt,
+        messages: [{ role: "user", content: prompt }],
+      })
+      const [text] = await Promise.all([result.text, result.usage])
+      const latencyMs = Date.now() - startedAt
+      console.log(`[ai-service] testUpstream OK: ${latencyMs}ms`)
+      return { ok: true, latencyMs, text }
+    }
     const provider = createOpenAI({
       baseURL: opts.baseUrl,
       apiKey: opts.apiKey,
       compatibility: "compatible",
     })
-    const apiMode = getOpenAIApiMode(opts.model)
-    const systemPrompt = "You are a connectivity test. Respond with the single word: ok"
-    console.log(
-      `[ai-service] testUpstream using ${apiMode} API` +
-        `${apiMode === "responses" ? " (manual compatible stream)" : ""} for model=${opts.model}`,
-    )
-    if (apiMode === "responses") {
-      const result = await tryResponsesGenerate({
-        upstream: {
-          id: "test",
-          dbId: null,
-          name: "test",
-          baseUrl: opts.baseUrl,
-          apiKey: opts.apiKey,
-          model: opts.model,
-          visionModel: null,
-          priority: 0,
-          enabled: true,
-          failCount: 0,
-          healthyAt: null,
-          lastError: null,
-        },
-        systemPrompt,
-        messages: [{ role: "user", content: "ping" }],
-      })
-      await result.usage
-      const latencyMs = Date.now() - startedAt
-      console.log(`[ai-service] testUpstream OK: ${latencyMs}ms`)
-      return { ok: true, latencyMs }
-    }
     const selected = getOpenAIModel(provider, opts.model)
-    // 用最小化的 streamText 拉一次完成（小 token），等 usage 完成代表全链路 OK
+    // 用与首页同一条 streamText 链路拉一次完成，确保不只是连通，还能拿到真实文本
     const result = streamText({
       model: selected.model,
       system: systemPrompt,
       temperature: 0,
-      messages: [{ role: "user", content: "ping" }],
-      maxTokens: 5,
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: 80,
       onError: ({ error }) => {
         const detail = describeError(error)
         console.error(
@@ -815,10 +1081,13 @@ export async function testUpstream(opts: {
         )
       },
     })
-    await result.usage
+    const [text] = await Promise.all([result.text, result.usage])
+    if (!text.trim()) {
+      throw new Error("上游测试返回空内容")
+    }
     const latencyMs = Date.now() - startedAt
     console.log(`[ai-service] testUpstream OK: ${latencyMs}ms`)
-    return { ok: true, latencyMs }
+    return { ok: true, latencyMs, text }
   } catch (e) {
     const detail = describeError(e)
     const latencyMs = Date.now() - startedAt

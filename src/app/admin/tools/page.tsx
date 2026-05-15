@@ -38,8 +38,8 @@ export default function AdminToolsPage() {
   const [editing, setEditing] = useState<Record<string, Partial<ToolConfig>>>({})
 
   useEffect(() => {
-    if (!loading && !user) router.push("/login?next=/admin/tools")
-    else if (!loading && user?.role !== "admin") router.push("/account")
+    if (!loading && !user) router.push("/admin/login?next=/admin/tools")
+    else if (!loading && user?.role !== "admin") router.push("/admin/login")
   }, [loading, user, router])
 
   const fetchTools = () => {

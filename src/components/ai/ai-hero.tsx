@@ -8,8 +8,10 @@ import { QuickPrompts } from "@/components/ai/quick-prompts"
 import { ConversationPanel } from "@/components/ai/conversation-panel"
 import {
   FileAttachInput,
+  FILE_ATTACH_LIMITS,
   type FileAttachError,
   type FileAttachInputHandle,
+  validateAttachFiles,
 } from "@/components/ai/file-attach-input"
 import { FileChip } from "@/components/ai/file-chip"
 import { ArrowUp, Paperclip, Square } from "lucide-react"
@@ -45,16 +47,27 @@ function nextLocalId(): string {
   return `att-${Date.now().toString(36)}-${_localCounter}`
 }
 
+function normalizeDisplayFileName(name: string): string {
+  if (!/[ÃÂ¤åæçèéä»�ï¿½]/.test(name)) return name
+  try {
+    const bytes = Uint8Array.from(Array.from(name).map((ch) => ch.charCodeAt(0) & 0xff))
+    const decoded = new TextDecoder("utf-8").decode(bytes)
+    return decoded && !decoded.includes("\uFFFD") ? decoded : name
+  } catch {
+    return name
+  }
+}
+
 function describeAttachError(err: FileAttachError): string {
   switch (err.kind) {
     case "too-large":
       return `文件 ${err.file.name} 超过 20MB 上限`
     case "too-many":
-      return "最多同时携带 3 个附件"
+      return `最多同时携带 ${FILE_ATTACH_LIMITS.maxFiles} 个附件`
     case "total-exceeded":
       return "附件总大小已超过 30MB 限制"
     case "mime-rejected":
-      return `不支持的文件类型：${err.file.name}`
+      return `暂不支持 ${err.file.name}。AI 附件目前支持文本、PDF、DOCX、XLSX、CSV/JSON 等可提取文本的文件`
   }
 }
 
@@ -75,6 +88,7 @@ export function AiHero() {
     setInput,
     handleInputChange,
     handleSubmit,
+    append,
     setMessages,
     stop,
     status,
@@ -97,6 +111,8 @@ export function AiHero() {
 
   const totalBytes = attachments.reduce((acc, a) => acc + a.size, 0)
   const hasUploadingAttachment = attachments.some((a) => a.status === "uploading")
+  const hasReadyAttachment = attachments.some((a) => a.status === "ready" && a.serverId)
+  const hasConversation = messages.length > 0
 
   const updateAttachment = useCallback((localId: string, patch: Partial<AttachmentItem>) => {
     setAttachments((prev) => prev.map((a) => (a.localId === localId ? { ...a, ...patch } : a)))
@@ -139,7 +155,7 @@ export function AiHero() {
         updateAttachment(localId, {
           status: "ready",
           serverId: payload.attachmentId,
-          name: payload.name || file.name,
+          name: normalizeDisplayFileName(payload.name || file.name),
           size: payload.size ?? file.size,
           mime: payload.mime || file.type,
         })
@@ -163,7 +179,7 @@ export function AiHero() {
       const localId = nextLocalId()
       const item: AttachmentItem = {
         localId,
-        name: file.name,
+        name: normalizeDisplayFileName(file.name),
         size: file.size,
         mime: file.type || "application/octet-stream",
         status: "uploading",
@@ -174,33 +190,71 @@ export function AiHero() {
     [uploadFile]
   )
 
+  const acceptFiles = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) return
+      setAttachError(null)
+      const current = attachmentsRef.current
+      const existingCount = current.length
+      const existingTotalBytes = current.reduce((sum, item) => sum + item.size, 0)
+      const { accepted, errors } = validateAttachFiles(files, existingCount, existingTotalBytes)
+      errors.forEach((err) => setAttachError(describeAttachError(err)))
+      accepted.forEach(onAcceptFile)
+    },
+    [onAcceptFile]
+  )
+
   const onAttachError = useCallback((err: FileAttachError) => {
     setAttachError(describeAttachError(err))
   }, [])
 
   const submit = useCallback(() => {
-    if (!input.trim() || isLoading || hasUploadingAttachment) return
-    const ready = attachmentsRef.current
-      .filter((a) => a.status === "ready" && a.serverId)
-      .map((a) => a.serverId as string)
+    if ((!input.trim() && !hasReadyAttachment) || isLoading || hasUploadingAttachment) return
+    const readyItems = attachmentsRef.current.filter((a) => a.status === "ready" && a.serverId)
+    const ready = readyItems.map((a) => a.serverId as string)
+    const experimentalAttachments = readyItems.map((a) => ({
+      name: a.name,
+      contentType: a.mime,
+      url: `attachment://${a.serverId}`,
+    }))
     if (ready.length > 0) {
-      handleSubmit(undefined, { body: { attachmentIds: ready } })
+      const text = input.trim() || "请根据附件内容帮我处理。"
+      void append(
+        {
+          role: "user",
+          content: text,
+          experimental_attachments: experimentalAttachments,
+        },
+        { body: { attachmentIds: ready } }
+      )
+      setInput("")
     } else {
       handleSubmit()
     }
     // clear attachments after submit kicks off
     setAttachments([])
     setAttachError(null)
-  }, [handleSubmit, hasUploadingAttachment, input, isLoading])
+  }, [append, handleSubmit, hasReadyAttachment, hasUploadingAttachment, input, isLoading, setInput])
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      if (e.nativeEvent.isComposing) return
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault()
         submit()
       }
     },
     [submit]
+  )
+
+  const onPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = Array.from(e.clipboardData.files || [])
+      if (files.length === 0) return
+      e.preventDefault()
+      acceptFiles(files)
+    },
+    [acceptFiles]
   )
 
   const onQuickSelect = useCallback(
@@ -241,14 +295,18 @@ export function AiHero() {
   }, [messages])
 
   const sendDisabled =
-    !input.trim() || isLoading || hasUploadingAttachment || attachments.some((a) => a.status === "error")
+    (!input.trim() && !hasReadyAttachment) ||
+    isLoading ||
+    hasUploadingAttachment ||
+    attachments.some((a) => a.status === "error")
 
-  return (
-    <div className="w-full">
+  const composer = (
+    <>
       <Card
         className={cn(
-          "mx-auto max-w-3xl rounded-2xl border border-gray-200/80 bg-white p-3 shadow-lg shadow-blue-500/5 md:p-4",
-          "gap-2"
+          "mx-auto w-full max-w-3xl rounded-2xl border border-gray-200/80 bg-white p-3 shadow-lg shadow-blue-500/5 md:p-4",
+          "gap-2 transition-[box-shadow,transform] duration-500 ease-out",
+          hasConversation ? "shadow-xl shadow-blue-500/10" : ""
         )}
       >
         <div className="relative">
@@ -257,6 +315,7 @@ export function AiHero() {
             value={input}
             onChange={handleInputChange}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             placeholder="告诉我你要做什么... 例如：把这份 PDF 总结成 5 条要点"
             rows={1}
             className={cn(
@@ -303,13 +362,13 @@ export function AiHero() {
                 size="icon-sm"
                 onClick={onPickFile}
                 aria-label="添加附件"
-                title="添加附件（PDF/Word/Excel/图片，单个 ≤20MB，总计 ≤30MB，最多 3 个）"
+                title={`添加附件（文本/PDF/DOCX/XLSX/CSV/JSON，单个 ≤20MB，总计 ≤30MB，最多 ${FILE_ATTACH_LIMITS.maxFiles} 个）`}
                 className="text-gray-500 hover:text-gray-700"
               >
                 <Paperclip className="h-4 w-4" />
               </Button>
               <span className="hidden text-[11px] text-gray-400 sm:inline">
-                ⌘+Enter 发送 · Shift+Enter 换行
+                Enter 发送 · Shift+Enter 换行 · 可直接粘贴文件
               </span>
             </div>
 
@@ -346,18 +405,37 @@ export function AiHero() {
       <p className="mt-2 text-center text-[11px] text-gray-400">
         文件仅用于本次处理，30 分钟后自动从服务器内存中清除
       </p>
+    </>
+  )
 
-      <QuickPrompts onSelect={onQuickSelect} disabled={isLoading} />
-
-      {messages.length > 0 ? (
-        <ConversationPanel
-          messages={messages}
-          onClear={onClear}
-          onCopyLast={onCopyLast}
-          isLoading={isLoading}
-          error={error}
-        />
-      ) : null}
+  return (
+    <div
+      className={cn(
+        "w-full transition-all duration-700 ease-out",
+        hasConversation ? "mx-auto flex min-h-[calc(100vh-150px)] max-w-4xl flex-col justify-end pt-4" : ""
+      )}
+    >
+      {!hasConversation ? (
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+          {composer}
+          <QuickPrompts onSelect={onQuickSelect} disabled={isLoading} />
+        </div>
+      ) : (
+        <>
+          <div className="animate-in fade-in slide-in-from-bottom-3 duration-500">
+            <ConversationPanel
+              messages={messages}
+              onClear={onClear}
+              onCopyLast={onCopyLast}
+              isLoading={isLoading}
+              error={error}
+            />
+          </div>
+          <div className="sticky bottom-4 mt-5 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {composer}
+          </div>
+        </>
+      )}
     </div>
   )
 }
