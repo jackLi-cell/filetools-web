@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from "express"
 import { z } from "zod"
 import busboy from "busboy"
-import { fileTypeFromBuffer } from "file-type"
 import sharp from "sharp"
 import { softAuth } from "../middleware/auth.js"
 import { aiRateLimit, acquireFlowLock, aiAttachRateLimit } from "../middleware/ai-rate-limit.js"
@@ -165,6 +164,11 @@ router.get("/health", async (_req: Request, res: Response) => {
 const MAX_FILE_BYTES = env.ai.maxFileMb * 1024 * 1024
 const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"])
 
+async function detectFileType(buffer: Buffer): Promise<{ mime?: string; ext?: string } | undefined> {
+  const mod = await import("file-type")
+  return mod.fileTypeFromBuffer(buffer)
+}
+
 function isSupportedImageMime(mime: string): boolean {
   return IMAGE_MIMES.has(mime.toLowerCase())
 }
@@ -292,7 +296,7 @@ router.post("/attach", softAuth, checkAiEnabled, aiAttachRateLimit, (req: Reques
       const buffer = Buffer.concat(chunks, total)
       const fileName = normalizeUploadedFileName(info.filename)
       try {
-        const detected = await fileTypeFromBuffer(buffer)
+        const detected = await detectFileType(buffer)
         const uploadedMime = info.mimeType || "application/octet-stream"
         const finalMime =
           detected?.mime && (isSupportedImageMime(detected.mime) || uploadedMime === "application/octet-stream")
