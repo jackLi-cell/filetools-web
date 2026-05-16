@@ -403,7 +403,7 @@ export function AiHero() {
                 size="icon-sm"
                 onClick={onPickFile}
                 aria-label="添加附件"
-                title={`添加附件（文本/PDF/DOCX/XLSX/CSV/JSON，单个 ≤20MB，总计 ≤30MB，最多 ${FILE_ATTACH_LIMITS.maxFiles} 个）`}
+                title={`添加附件（图片/文本/PDF/DOCX/XLSX/CSV/JSON，单个 ≤20MB，总计 ≤30MB，最多 ${FILE_ATTACH_LIMITS.maxFiles} 个）`}
                 className="text-gray-500 hover:text-gray-700"
               >
                 <Paperclip className="h-4 w-4" />

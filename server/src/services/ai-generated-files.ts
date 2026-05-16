@@ -71,11 +71,20 @@ function includesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text))
 }
 
+function isFileHowToQuestion(text: string): boolean {
+  return /(怎么|如何|怎样|教程|步骤|方法|为什么|区别|能不能|可以吗|是否|是什么|介绍一下|说明一下)/i.test(text)
+}
+
+function hasExplicitDownloadIntent(text: string): boolean {
+  return /(返回|生成|导出|输出|保存|做成|制作|整理成|写成).{0,18}(可下载|下载|文件|附件|\.docx?|\.pptx?|\.md|\.txt|\.html?|\.json|\.csv|\bdocx?\b|\bpptx?\b|\bword\b|\bpowerpoint\b|\bmarkdown\b|\bhtml\b|\bjson\b|\bcsv\b|\btxt\b)/i.test(text) ||
+    /(可下载|下载|文件|附件|\.docx?|\.pptx?|\.md|\.txt|\.html?|\.json|\.csv|\bdocx?\b|\bpptx?\b|\bword\b|\bpowerpoint\b|\bmarkdown\b|\bhtml\b|\bjson\b|\bcsv\b|\btxt\b).{0,18}(返回|生成|导出|输出|保存|做成|制作|整理成|写成)/i.test(text)
+}
+
 function detectFormat(text: string): AiGeneratedFileFormat | null {
-  const hasGenerateIntent = /(生成|导出|输出|保存|整理成|制作|做成|返回|下载|写成)/i.test(text)
-  const hasFileIntent =
-    /(文件|文档|下载|附件|格式|幻灯片|演示文稿|\.docx?|\.pptx?|\.md|\.txt|\.html?|\.json|\.csv|\bdocx?\b|\bword\b|\bpptx?\b|\bpowerpoint\b|\bmarkdown\b|\bhtml\b|\bjson\b|\bcsv\b|\btxt\b)/i.test(text)
-  if (!hasGenerateIntent || !hasFileIntent) return null
+  if (!hasExplicitDownloadIntent(text)) return null
+  if (isFileHowToQuestion(text) && !/(返回|导出|输出|下载|保存).{0,18}(文件|附件|\.docx?|\.pptx?|\.md|\.txt|\.html?|\.json|\.csv|\bdocx?\b|\bpptx?\b|\bword\b|\bpowerpoint\b|\bmarkdown\b|\bhtml\b|\bjson\b|\bcsv\b|\btxt\b)/i.test(text)) {
+    return null
+  }
 
   if (includesAny(text, [/\.docx?\b/i, /\bdocx?\b/i, /\bword\b/i, /Word\s*文档/i])) return "docx"
   if (includesAny(text, [/\.pptx?\b/i, /\bpptx?\b/i, /\bpowerpoint\b/i, /PPT/i, /幻灯片/i, /演示文稿/i])) return "pptx"
