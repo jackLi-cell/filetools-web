@@ -36,7 +36,19 @@ export interface StoredAttachment {
   createdAt: number
   expiresAt: number
   signedToken: string
-  meta?: { pages?: number; rows?: number; truncated?: boolean; sheetName?: string }
+  meta?: AttachmentMeta
+}
+
+export interface AttachmentMeta {
+  pages?: number
+  rows?: number
+  truncated?: boolean
+  sheetName?: string
+  width?: number
+  height?: number
+  format?: string
+  animated?: boolean
+  kind?: "text" | "image"
 }
 
 export interface AttachmentInputData {
@@ -45,7 +57,7 @@ export interface AttachmentInputData {
   name: string
   size: number
   extractedText: string | null
-  meta?: { pages?: number; rows?: number; truncated?: boolean; sheetName?: string }
+  meta?: AttachmentMeta
 }
 
 export class StorageFullError extends Error {

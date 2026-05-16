@@ -29,6 +29,7 @@ interface AttachmentItem {
   mime: string
   status: "uploading" | "ready" | "error"
   errorMessage?: string
+  previewUrl?: string
 }
 
 interface AttachUploadResponse {
@@ -39,6 +40,11 @@ interface AttachUploadResponse {
   charCount?: number
   signedToken?: string
   expiresAt?: number
+  meta?: {
+    width?: number
+    height?: number
+    format?: string
+  } | null
 }
 
 let _localCounter = 0
@@ -67,7 +73,7 @@ function describeAttachError(err: FileAttachError): string {
     case "total-exceeded":
       return "附件总大小已超过 30MB 限制"
     case "mime-rejected":
-      return `暂不支持 ${err.file.name}。AI 附件目前支持文本、PDF、DOCX、XLSX、CSV/JSON 等可提取文本的文件`
+      return `暂不支持 ${err.file.name}。AI 附件支持图片、文本、PDF、DOCX、XLSX、CSV/JSON 等文件`
   }
 }
 
@@ -77,10 +83,21 @@ export function AiHero() {
   const [attachments, setAttachments] = useState<AttachmentItem[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
   const attachmentsRef = useRef<AttachmentItem[]>([])
+  const previewUrlsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     attachmentsRef.current = attachments
   }, [attachments])
+
+  useEffect(() => {
+    const previewUrls = previewUrlsRef.current
+    return () => {
+      for (const url of previewUrls) {
+        URL.revokeObjectURL(url)
+      }
+      previewUrls.clear()
+    }
+  }, [])
 
   const {
     messages,
@@ -128,7 +145,14 @@ export function AiHero() {
   }, [])
 
   const removeAttachment = useCallback((localId: string) => {
-    setAttachments((prev) => prev.filter((a) => a.localId !== localId))
+    setAttachments((prev) => {
+      const target = prev.find((a) => a.localId === localId)
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl)
+        previewUrlsRef.current.delete(target.previewUrl)
+      }
+      return prev.filter((a) => a.localId !== localId)
+    })
   }, [])
 
   const uploadFile = useCallback(
@@ -186,12 +210,15 @@ export function AiHero() {
   const onAcceptFile = useCallback(
     (file: File) => {
       const localId = nextLocalId()
+      const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined
+      if (previewUrl) previewUrlsRef.current.add(previewUrl)
       const item: AttachmentItem = {
         localId,
         name: normalizeDisplayFileName(file.name),
         size: file.size,
         mime: file.type || "application/octet-stream",
         status: "uploading",
+        previewUrl,
       }
       setAttachments((prev) => [...prev, item])
       void uploadFile(file, localId)
@@ -224,7 +251,7 @@ export function AiHero() {
     const experimentalAttachments = readyItems.map((a) => ({
       name: a.name,
       contentType: a.mime,
-      url: `attachment://${a.serverId}`,
+      url: a.previewUrl ?? `attachment://${a.serverId}`,
     }))
     if (ready.length > 0) {
       const text = input.trim() || "请根据附件内容帮我处理。"
@@ -279,6 +306,10 @@ export function AiHero() {
   const onClear = useCallback(() => {
     setMessages([])
     setInput("")
+    for (const url of previewUrlsRef.current) {
+      URL.revokeObjectURL(url)
+    }
+    previewUrlsRef.current.clear()
     setAttachments([])
     setAttachError(null)
   }, [setMessages, setInput])
@@ -343,6 +374,7 @@ export function AiHero() {
                   mime={a.mime}
                   status={a.status}
                   errorMessage={a.errorMessage}
+                  previewUrl={a.previewUrl}
                   onRemove={() => removeAttachment(a.localId)}
                 />
               ))}
@@ -377,7 +409,7 @@ export function AiHero() {
                 <Paperclip className="h-4 w-4" />
               </Button>
               <span className="hidden text-[11px] text-gray-400 sm:inline">
-                Enter 发送 · Shift+Enter 换行 · 可直接粘贴文件
+                Enter 发送 · Shift+Enter 换行 · 可粘贴文件或图片
               </span>
             </div>
 

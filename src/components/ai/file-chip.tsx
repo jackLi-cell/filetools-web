@@ -21,6 +21,7 @@ export interface FileChipProps {
   mime: string
   status: FileChipStatus
   errorMessage?: string
+  previewUrl?: string
   onRemove: () => void
 }
 
@@ -57,8 +58,9 @@ function iconFor(mime: string, name: string): LucideIcon {
   return File
 }
 
-export function FileChip({ name, size, mime, status, errorMessage, onRemove }: FileChipProps) {
+export function FileChip({ name, size, mime, status, errorMessage, previewUrl, onRemove }: FileChipProps) {
   const Icon = iconFor(mime, name)
+  const isImage = mime.toLowerCase().startsWith("image/") && previewUrl
   return (
     <div
       className={cn(
@@ -71,7 +73,16 @@ export function FileChip({ name, size, mime, status, errorMessage, onRemove }: F
       )}
       title={errorMessage ?? `${name} · ${formatSize(size)}`}
     >
-      <Icon className="h-4 w-4 shrink-0 text-gray-500" aria-hidden="true" />
+      {isImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={previewUrl}
+          alt=""
+          className="h-8 w-8 shrink-0 rounded-md border border-gray-200 object-cover"
+        />
+      ) : (
+        <Icon className="h-4 w-4 shrink-0 text-gray-500" aria-hidden="true" />
+      )}
       <span className="flex min-w-0 flex-col">
         <span className="truncate max-w-[180px] font-medium text-gray-800">{name}</span>
         <span className="text-[10px] text-gray-500">

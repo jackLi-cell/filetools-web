@@ -4,7 +4,9 @@ import {
   pipeDataStreamToResponse,
   streamText,
   type CoreMessage,
+  type ImagePart,
   type StreamTextResult,
+  type TextPart,
   type ToolSet,
 } from "ai"
 import { PrismaClient } from "@prisma/client"
@@ -319,6 +321,66 @@ function messageContentToText(content: CoreMessage["content"]): string {
   return ""
 }
 
+function isImageAttachment(attachment: StoredAttachment): boolean {
+  return attachment.meta?.kind === "image" || attachment.mime.toLowerCase().startsWith("image/")
+}
+
+function splitAttachments(attachments: StoredAttachment[]): {
+  textAttachments: StoredAttachment[]
+  imageAttachments: StoredAttachment[]
+} {
+  const textAttachments: StoredAttachment[] = []
+  const imageAttachments: StoredAttachment[] = []
+  for (const attachment of attachments) {
+    if (isImageAttachment(attachment)) imageAttachments.push(attachment)
+    else textAttachments.push(attachment)
+  }
+  return { textAttachments, imageAttachments }
+}
+
+function createImageContentPart(attachment: StoredAttachment): ImagePart {
+  return {
+    type: "image",
+    image: attachment.buffer,
+    mimeType: attachment.mime,
+  }
+}
+
+function buildVisionUnavailableText(imageAttachments: StoredAttachment[]): string {
+  const names = imageAttachments.map((a) => {
+    const size = a.meta?.width && a.meta?.height ? `，${a.meta.width}x${a.meta.height}` : ""
+    return `- ${a.name} (${a.mime}${size})`
+  })
+  return [
+    "当前已收到图片附件，但可用 AI 上游没有配置视觉模型，无法直接识别图片内容。",
+    "",
+    "已收到的图片：",
+    ...names,
+    "",
+    "你可以换用已配置视觉模型的上游，或把图片里的文字/关键信息复制成文本后再发送。我不会把图片当作已识别内容来回答。",
+  ].join("\n")
+}
+
+function looksVisionCapableModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase()
+  return (
+    /^gpt-5(?:[._:-]|$)/.test(normalized) ||
+    /^gpt-4(?:o|\.1|\.5)?(?:[._:-]|$)/.test(normalized) ||
+    normalized.includes("vision") ||
+    normalized.includes("qwen-vl") ||
+    normalized.includes("gemini") ||
+    normalized.includes("claude-3") ||
+    normalized.includes("claude-sonnet") ||
+    normalized.includes("claude-opus")
+  )
+}
+
+function resolveVisionModel(upstream: Upstream): string | null {
+  const configured = upstream.visionModel?.trim()
+  if (configured) return configured
+  return looksVisionCapableModel(upstream.model) ? upstream.model : null
+}
+
 function extractResponsesText(json: unknown): string {
   const root = json as {
     output_text?: unknown
@@ -578,6 +640,15 @@ function createManualTextResult(
   } as unknown as StreamTextResult<ToolSet, never>
 }
 
+function createSyntheticTextResult(text: string): StreamTextResult<ToolSet, never> {
+  const usage = {
+    promptTokens: 0,
+    completionTokens: Math.ceil(text.length / 2),
+    totalTokens: Math.ceil(text.length / 2),
+  }
+  return createManualTextResult(text, usage)
+}
+
 function wrapResultWithGeneratedFile(
   result: StreamTextResult<ToolSet, never>,
   fileRequest: AiOutputFileRequest | null,
@@ -675,10 +746,19 @@ async function tryChatCompletionsGenerate(opts: {
   upstream: Upstream
   systemPrompt: string
   messages: CoreMessage[]
+  imageAttachments?: StoredAttachment[]
   abortSignal?: AbortSignal
 }): Promise<StreamTextResult<ToolSet, never>> {
-  const { upstream, systemPrompt, messages, abortSignal } = opts
-  const inputMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+  const { upstream, systemPrompt, messages, imageAttachments = [], abortSignal } = opts
+  const visionModel = imageAttachments.length > 0 ? resolveVisionModel(upstream) : null
+  const model = visionModel ?? upstream.model
+  type ChatCompletionContent =
+    | string
+    | Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      >
+  const inputMessages: Array<{ role: "system" | "user" | "assistant"; content: ChatCompletionContent }> = [
     { role: "system", content: systemPrompt },
   ]
 
@@ -691,10 +771,44 @@ async function tryChatCompletionsGenerate(opts: {
       content: text,
     })
   }
+  if (imageAttachments.length > 0) {
+    const lastUserIdx = (() => {
+      for (let i = inputMessages.length - 1; i >= 0; i--) {
+        if (inputMessages[i]?.role === "user") return i
+      }
+      return -1
+    })()
+    const imageParts = imageAttachments.map((attachment) => ({
+      type: "image_url" as const,
+      image_url: {
+        url: `data:${attachment.mime};base64,${attachment.buffer.toString("base64")}`,
+      },
+    }))
+    const imageIntro = imageAttachments
+      .map((a, idx) => {
+        const size = a.meta?.width && a.meta?.height ? `, ${a.meta.width}x${a.meta.height}` : ""
+        return `${idx + 1}. ${a.name} (${a.mime}${size})`
+      })
+      .join("\n")
+    const existingText =
+      lastUserIdx >= 0 ? messageContentToText(inputMessages[lastUserIdx]!.content as CoreMessage["content"]) : ""
+    const multimodalContent: ChatCompletionContent = [
+      {
+        type: "text",
+        text: `${existingText || "请根据这些图片回答用户问题。"}\n\n[图片附件]\n${imageIntro}`,
+      },
+      ...imageParts,
+    ]
+    if (lastUserIdx >= 0) {
+      inputMessages[lastUserIdx] = { role: "user", content: multimodalContent }
+    } else {
+      inputMessages.push({ role: "user", content: multimodalContent })
+    }
+  }
 
   const url = joinUrl(upstream.baseUrl, "/chat/completions")
   const body = {
-    model: upstream.model,
+    model,
     messages: inputMessages,
     temperature: 0.5,
     max_tokens: env.ai.maxOutputTokens,
@@ -746,11 +860,20 @@ async function tryResponsesGenerate(opts: {
   upstream: Upstream
   systemPrompt: string
   messages: CoreMessage[]
+  imageAttachments?: StoredAttachment[]
   abortSignal?: AbortSignal
 }): Promise<StreamTextResult<ToolSet, never>> {
-  const { upstream, systemPrompt, messages, abortSignal } = opts
+  const { upstream, systemPrompt, messages, imageAttachments = [], abortSignal } = opts
+  const visionModel = imageAttachments.length > 0 ? resolveVisionModel(upstream) : null
+  const model = visionModel ?? upstream.model
   let instructions = systemPrompt
-  const input: Array<{ role: "user" | "assistant"; content: string }> = []
+  type ResponsesInputContent =
+    | string
+    | Array<
+        | { type: "input_text"; text: string }
+        | { type: "input_image"; image_url: string }
+      >
+  const input: Array<{ role: "user" | "assistant"; content: ResponsesInputContent }> = []
   for (const message of messages) {
     const text = messageContentToText(message.content)
     if (!text.trim()) continue
@@ -763,10 +886,41 @@ async function tryResponsesGenerate(opts: {
       content: text,
     })
   }
+  if (imageAttachments.length > 0) {
+    const imageIntro = imageAttachments
+      .map((a, idx) => {
+        const size = a.meta?.width && a.meta?.height ? `, ${a.meta.width}x${a.meta.height}` : ""
+        return `${idx + 1}. ${a.name} (${a.mime}${size})`
+      })
+      .join("\n")
+    const lastUserIdx = (() => {
+      for (let i = input.length - 1; i >= 0; i--) {
+        if (input[i]?.role === "user") return i
+      }
+      return -1
+    })()
+    const existingText =
+      lastUserIdx >= 0 ? messageContentToText(input[lastUserIdx]!.content as CoreMessage["content"]) : ""
+    const content: ResponsesInputContent = [
+      {
+        type: "input_text",
+        text: `${existingText || "请根据这些图片回答用户问题。"}\n\n[图片附件]\n${imageIntro}`,
+      },
+      ...imageAttachments.map((attachment) => ({
+        type: "input_image" as const,
+        image_url: `data:${attachment.mime};base64,${attachment.buffer.toString("base64")}`,
+      })),
+    ]
+    if (lastUserIdx >= 0) {
+      input[lastUserIdx] = { role: "user", content }
+    } else {
+      input.push({ role: "user", content })
+    }
+  }
 
   const url = joinUrl(upstream.baseUrl, "/responses")
   const body = {
-    model: upstream.model,
+    model,
     instructions,
     input,
     max_output_tokens: env.ai.maxOutputTokens,
@@ -845,9 +999,11 @@ export async function streamChat(
 
   const baseSystemPrompt = await getSystemPrompt()
 
-  // 1) 解析附件并拼到最后一条 user message 之前
+  // 1) 解析附件。文本附件注入上下文，图片附件只发给支持视觉的上游。
   const attachments = resolveAttachments(attachmentIds)
-  const messagesWithAttachments = injectAttachmentsIntoMessages(messages, attachments)
+  const { textAttachments, imageAttachments } = splitAttachments(attachments)
+  const hasImageAttachments = imageAttachments.length > 0
+  const messagesWithAttachments = injectAttachmentsIntoMessages(messages, textAttachments)
 
   // 2) 组装 system prompt（基础 + 工具目录 + 附件清单）
   const toolsCatalog = buildToolsCatalog()
@@ -855,14 +1011,26 @@ export async function streamChat(
     attachments.map((a) => ({ id: a.id, name: a.name, mime: a.mime })),
   )
   const outputFileInstruction = buildOutputFileInstruction(generatedFileRequest)
-  const systemPrompt = `${baseSystemPrompt}\n\n${toolsCatalog}${attachmentsHint}${outputFileInstruction}`
+  const visionInstruction = hasImageAttachments
+    ? "\n用户本轮上传了图片附件。若当前上游支持视觉，请直接识别图片内容并回答；不要声称无法看图。"
+    : ""
+  const systemPrompt = `${baseSystemPrompt}\n\n${toolsCatalog}${attachmentsHint}${outputFileInstruction}${visionInstruction}`
 
   // 3) 总长度截断（system 不参与，messages 历史按 maxContextChars 截断）
   const truncated = truncateMessages(messagesWithAttachments, env.ai.maxContextChars)
 
   const attempts: Array<{ name: string; error: string }> = []
+  const visionCandidatesAvailable = !hasImageAttachments || candidates.some((u) => resolveVisionModel(u))
+  if (!visionCandidatesAvailable) {
+    console.warn("[ai-service] image attachments present but no vision upstream configured")
+    return createSyntheticTextResult(buildVisionUnavailableText(imageAttachments))
+  }
 
   for (const upstream of candidates) {
+    if (hasImageAttachments && !resolveVisionModel(upstream)) {
+      attempts.push({ name: upstream.name, error: "no vision model configured" })
+      continue
+    }
     if (isInCooldown(upstream)) {
       console.warn(
         `[ai-service] upstream "${upstream.name}" in cooldown ` +
@@ -878,6 +1046,7 @@ export async function streamChat(
         upstream,
         systemPrompt,
         messages: truncated,
+        imageAttachments,
         abortSignal,
       })
 
@@ -1048,13 +1217,57 @@ function injectAttachmentsIntoMessages(
   return out
 }
 
+function injectImageAttachmentsIntoLastUserMessage(
+  messages: CoreMessage[],
+  imageAttachments: StoredAttachment[],
+): CoreMessage[] {
+  if (imageAttachments.length === 0) return messages
+
+  const imageParts = imageAttachments.map(createImageContentPart)
+  const imageIntro = imageAttachments
+    .map((a, idx) => {
+      const size = a.meta?.width && a.meta?.height ? `, ${a.meta.width}x${a.meta.height}` : ""
+      return `${idx + 1}. ${a.name} (${a.mime}${size})`
+    })
+    .join("\n")
+
+  const out = [...messages]
+  let lastUserIdx = -1
+  for (let i = out.length - 1; i >= 0; i--) {
+    if (out[i]!.role === "user") {
+      lastUserIdx = i
+      break
+    }
+  }
+
+  const existingText =
+    lastUserIdx >= 0
+      ? messageContentToText(out[lastUserIdx]!.content)
+      : "请根据这些图片回答用户问题。"
+  const parts: Array<TextPart | ImagePart> = [
+    {
+      type: "text",
+      text: `${existingText || "请根据这些图片回答用户问题。"}\n\n[图片附件]\n${imageIntro}`,
+    },
+    ...imageParts,
+  ]
+
+  if (lastUserIdx >= 0) {
+    out[lastUserIdx] = { ...out[lastUserIdx]!, role: "user", content: parts } as CoreMessage
+  } else {
+    out.push({ role: "user", content: parts })
+  }
+  return out
+}
+
 async function tryStream(opts: {
   upstream: Upstream
   systemPrompt: string
   messages: CoreMessage[]
+  imageAttachments?: StoredAttachment[]
   abortSignal?: AbortSignal
 }): Promise<StreamTextResult<ToolSet, never>> {
-  const { upstream, systemPrompt, messages, abortSignal } = opts
+  const { upstream, systemPrompt, messages, imageAttachments = [], abortSignal } = opts
 
   // 入参摘要（API key 脱敏）
   const lastUser = messages.slice().reverse().find((m) => m.role === "user")
@@ -1067,24 +1280,25 @@ async function tryStream(opts: {
     : "(empty)"
   console.log(
     `[ai-service] -> upstream "${upstream.name}" ` +
-      `baseUrl=${upstream.baseUrl} model=${upstream.model} apiKey=${apiKeyMasked} ` +
+      `baseUrl=${upstream.baseUrl} model=${imageAttachments.length > 0 ? resolveVisionModel(upstream) ?? upstream.model : upstream.model} apiKey=${apiKeyMasked} ` +
       `systemLen=${systemPrompt.length} msgs=${messages.length} maxTokens=${env.ai.maxOutputTokens} ` +
-      `lastUser="${lastUserText.replace(/\n/g, "\\n")}"`,
+      `images=${imageAttachments.length} lastUser="${lastUserText.replace(/\n/g, "\\n")}"`,
   )
 
-  const apiMode = getOpenAIApiMode(upstream.model)
-  const manualChat = apiMode === "chat" && shouldUseManualChatCompletions(upstream.model)
+  const modelForCall = imageAttachments.length > 0 ? resolveVisionModel(upstream) ?? upstream.model : upstream.model
+  const apiMode = getOpenAIApiMode(modelForCall)
+  const manualChat = apiMode === "chat" && shouldUseManualChatCompletions(modelForCall)
   console.log(
     `[ai-service] -> upstream "${upstream.name}" using ` +
       `${manualChat ? "chat API (manual compatible stream)" : `${apiMode} API`}` +
-      `${apiMode === "responses" ? " (manual compatible stream)" : ""} for model=${upstream.model}`,
+      `${apiMode === "responses" ? " (manual compatible stream)" : ""} for model=${modelForCall}`,
   )
 
   if (apiMode === "responses") {
-    return tryResponsesGenerate({ upstream, systemPrompt, messages, abortSignal })
+    return tryResponsesGenerate({ upstream, systemPrompt, messages, imageAttachments, abortSignal })
   }
   if (manualChat) {
-    return tryChatCompletionsGenerate({ upstream, systemPrompt, messages, abortSignal })
+    return tryChatCompletionsGenerate({ upstream, systemPrompt, messages, imageAttachments, abortSignal })
   }
 
   const provider = createOpenAI({
@@ -1092,7 +1306,10 @@ async function tryStream(opts: {
     apiKey: upstream.apiKey,
     compatibility: "compatible",
   })
-  const selected = getOpenAIModel(provider, upstream.model)
+  const selected = getOpenAIModel(provider, modelForCall)
+  const modelMessages = imageAttachments.length > 0
+    ? injectImageAttachmentsIntoLastUserMessage(messages, imageAttachments)
+    : messages
 
   const result = streamText({
     model: selected.model,
@@ -1100,7 +1317,7 @@ async function tryStream(opts: {
     temperature: 0.5,
     tools: buildTools(),
     maxSteps: 3,
-    messages,
+    messages: modelMessages,
     maxTokens: env.ai.maxOutputTokens,
     abortSignal,
     onError: ({ error }) => {

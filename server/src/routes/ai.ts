@@ -1,12 +1,14 @@
 import { Router, type Request, type Response } from "express"
 import { z } from "zod"
 import busboy from "busboy"
+import { fileTypeFromBuffer } from "file-type"
+import sharp from "sharp"
 import { softAuth } from "../middleware/auth.js"
 import { aiRateLimit, acquireFlowLock, aiAttachRateLimit } from "../middleware/ai-rate-limit.js"
 import { streamChat, AllUpstreamsFailedError, isAiEnabled } from "../services/ai-service.js"
 import { getUpstreamSnapshot } from "../services/ai-upstream-manager.js"
 import { extractText, UnsupportedFileTypeError, ExtractionFailedError } from "../services/file-extractor.js"
-import { attachmentStore, StorageFullError } from "../services/attachment-store.js"
+import { attachmentStore, StorageFullError, type AttachmentMeta } from "../services/attachment-store.js"
 import { env } from "../config/env.js"
 import type { CoreMessage } from "ai"
 
@@ -161,6 +163,15 @@ router.get("/health", async (_req: Request, res: Response) => {
 // ─────────────────────────────────────────────────────────────────────
 
 const MAX_FILE_BYTES = env.ai.maxFileMb * 1024 * 1024
+const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"])
+
+function isSupportedImageMime(mime: string): boolean {
+  return IMAGE_MIMES.has(mime.toLowerCase())
+}
+
+function isSupportedImageName(name: string): boolean {
+  return /\.(png|jpe?g|webp|gif)$/i.test(name)
+}
 
 function normalizeUploadedFileName(name: string | undefined): string {
   const fallback = "unnamed"
@@ -281,12 +292,38 @@ router.post("/attach", softAuth, checkAiEnabled, aiAttachRateLimit, (req: Reques
       const buffer = Buffer.concat(chunks, total)
       const fileName = normalizeUploadedFileName(info.filename)
       try {
-        const extracted = await extractText(buffer, info.mimeType || "application/octet-stream", fileName)
+        const detected = await fileTypeFromBuffer(buffer)
+        const uploadedMime = info.mimeType || "application/octet-stream"
+        const finalMime =
+          detected?.mime && (isSupportedImageMime(detected.mime) || uploadedMime === "application/octet-stream")
+            ? detected.mime
+            : uploadedMime
+
+        let extracted: { text: string; meta: AttachmentMeta }
+        if (isSupportedImageMime(finalMime) || isSupportedImageName(fileName)) {
+          if (!detected?.mime || !isSupportedImageMime(detected.mime)) {
+            sendError(400, "图片文件格式校验失败，请上传 PNG、JPG、WebP 或 GIF")
+            return
+          }
+          const meta = await sharp(buffer, { animated: detected.mime === "image/gif" }).metadata()
+          extracted = {
+            text: "",
+            meta: {
+              kind: "image",
+              width: meta.width,
+              height: meta.height,
+              format: meta.format,
+              animated: Boolean(meta.pages && meta.pages > 1),
+            },
+          }
+        } else {
+          extracted = await extractText(buffer, finalMime, fileName)
+        }
         let stored
         try {
           stored = attachmentStore.put({
             buffer,
-            mime: info.mimeType || "application/octet-stream",
+            mime: finalMime,
             name: fileName,
             size: total,
             extractedText: extracted.text,

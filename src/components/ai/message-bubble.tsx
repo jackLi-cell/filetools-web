@@ -36,6 +36,8 @@ function getFileName(data: string, mimeType?: string): string {
   const ext =
     mime.includes("wordprocessingml.document")
       ? "docx"
+      : mime.includes("presentationml.presentation")
+        ? "pptx"
       : mime.includes("markdown")
         ? "md"
         : mime.includes("plain")
@@ -44,9 +46,15 @@ function getFileName(data: string, mimeType?: string): string {
             ? "html"
             : mime.includes("json")
               ? "json"
-              : mime.includes("csv")
-                ? "csv"
-                : mimeType?.split("/").pop()?.replace("plain", "txt") || "file"
+      : mime.includes("csv")
+        ? "csv"
+        : mime.includes("png")
+          ? "png"
+          : mime.includes("jpeg")
+            ? "jpg"
+            : mime.includes("webp")
+              ? "webp"
+        : mimeType?.split("/").pop()?.replace("plain", "txt") || "file"
   return `灵猫生成文件.${ext}`
 }
 
@@ -105,9 +113,8 @@ function getToolResultFiles(result: unknown): Array<{ name: string; url: string;
 export function MessageBubble({ role, message, content, isStreaming }: MessageBubbleProps) {
   if (role === "user") {
     const text = getMessageText(message, content)
-    const attachmentNames = message?.experimental_attachments
-      ?.map((attachment) => attachment.name)
-      .filter((name): name is string => typeof name === "string" && name.length > 0)
+    const attachments = message?.experimental_attachments
+      ?.filter((attachment) => typeof attachment.name === "string" && attachment.name.length > 0)
     return (
       <div className="flex w-full justify-end">
         <div
@@ -117,16 +124,31 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
           )}
         >
           {text}
-          {attachmentNames && attachmentNames.length > 0 ? (
-            <div className="mt-2 flex flex-wrap justify-end gap-1.5">
-              {attachmentNames.map((name) => (
-                <span
-                  key={name}
-                  className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] text-gray-600"
-                >
-                  {name}
-                </span>
-              ))}
+          {attachments && attachments.length > 0 ? (
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              {attachments.map((attachment) => {
+                const isImage =
+                  typeof attachment.contentType === "string" &&
+                  attachment.contentType.startsWith("image/") &&
+                  typeof attachment.url === "string" &&
+                  (attachment.url.startsWith("blob:") || attachment.url.startsWith("data:"))
+                return (
+                  <span
+                    key={`${attachment.name}-${attachment.url}`}
+                    className="inline-flex max-w-[180px] items-center gap-1.5 rounded-full bg-white/85 px-2 py-1 text-[11px] text-gray-600"
+                  >
+                    {isImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={attachment.url}
+                        alt=""
+                        className="h-7 w-7 shrink-0 rounded-md object-cover"
+                      />
+                    ) : null}
+                    <span className="truncate">{attachment.name}</span>
+                  </span>
+                )
+              })}
             </div>
           ) : null}
         </div>

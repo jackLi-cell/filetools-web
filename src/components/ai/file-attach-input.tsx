@@ -3,6 +3,10 @@
 import { forwardRef, useImperativeHandle, useRef } from "react"
 
 const ALLOWED_MIMES = new Set<string>([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
   "text/plain",
   "text/markdown",
   "text/csv",
@@ -16,7 +20,7 @@ const ALLOWED_MIMES = new Set<string>([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ])
 
-const ALLOWED_EXTENSIONS = /\.(txt|md|markdown|csv|tsv|pdf|json|xml|yml|yaml|log|html|htm|js|ts|jsx|tsx|py|java|c|cpp|h|css|scss|less|sql|sh|conf|ini|toml|docx|xlsx)$/i
+const ALLOWED_EXTENSIONS = /\.(png|jpe?g|webp|gif|txt|md|markdown|csv|tsv|pdf|json|xml|yml|yaml|log|html|htm|js|ts|jsx|tsx|py|java|c|cpp|h|css|scss|less|sql|sh|conf|ini|toml|docx|xlsx)$/i
 
 const SINGLE_FILE_MAX = 20 * 1024 * 1024
 const TOTAL_MAX = 30 * 1024 * 1024
@@ -128,7 +132,7 @@ export const FileAttachInput = forwardRef<FileAttachInputHandle, FileAttachInput
         className="hidden"
         onChange={onChange}
         disabled={disabled}
-        accept=".txt,.md,.markdown,.csv,.tsv,.pdf,.json,.xml,.yml,.yaml,.log,.html,.htm,.js,.ts,.jsx,.tsx,.py,.java,.c,.cpp,.h,.css,.scss,.less,.sql,.sh,.conf,.ini,.toml,.docx,.xlsx,text/*,application/pdf,application/json,application/xml,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        accept="image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.markdown,.csv,.tsv,.pdf,.json,.xml,.yml,.yaml,.log,.html,.htm,.js,.ts,.jsx,.tsx,.py,.java,.c,.cpp,.h,.css,.scss,.less,.sql,.sh,.conf,.ini,.toml,.docx,.xlsx,text/*,application/pdf,application/json,application/xml,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       />
     )
   }

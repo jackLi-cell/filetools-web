@@ -1,11 +1,12 @@
 import { Document, Packer, Paragraph, TextRun } from "docx"
+import PptxGenJS from "pptxgenjs"
 
 type ChatMessageLike = {
   role?: unknown
   content?: unknown
 }
 
-export type AiGeneratedFileFormat = "docx" | "md" | "txt" | "html" | "json" | "csv"
+export type AiGeneratedFileFormat = "docx" | "pptx" | "md" | "txt" | "html" | "json" | "csv"
 
 export interface AiOutputFileRequest {
   format: AiGeneratedFileFormat
@@ -25,6 +26,11 @@ const FORMAT_META: Record<AiGeneratedFileFormat, { ext: string; mimeType: string
     ext: "docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     label: "Word 文档",
+  },
+  pptx: {
+    ext: "pptx",
+    mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    label: "PPT 演示文稿",
   },
   md: { ext: "md", mimeType: "text/markdown", label: "Markdown 文件" },
   txt: { ext: "txt", mimeType: "text/plain", label: "文本文件" },
@@ -68,10 +74,11 @@ function includesAny(text: string, patterns: RegExp[]): boolean {
 function detectFormat(text: string): AiGeneratedFileFormat | null {
   const hasGenerateIntent = /(生成|导出|输出|保存|整理成|制作|做成|返回|下载|写成)/i.test(text)
   const hasFileIntent =
-    /(文件|文档|下载|附件|格式|\.docx?|\.md|\.txt|\.html?|\.json|\.csv|\bdocx?\b|\bword\b|\bmarkdown\b|\bhtml\b|\bjson\b|\bcsv\b|\btxt\b)/i.test(text)
+    /(文件|文档|下载|附件|格式|幻灯片|演示文稿|\.docx?|\.pptx?|\.md|\.txt|\.html?|\.json|\.csv|\bdocx?\b|\bword\b|\bpptx?\b|\bpowerpoint\b|\bmarkdown\b|\bhtml\b|\bjson\b|\bcsv\b|\btxt\b)/i.test(text)
   if (!hasGenerateIntent || !hasFileIntent) return null
 
   if (includesAny(text, [/\.docx?\b/i, /\bdocx?\b/i, /\bword\b/i, /Word\s*文档/i])) return "docx"
+  if (includesAny(text, [/\.pptx?\b/i, /\bpptx?\b/i, /\bpowerpoint\b/i, /PPT/i, /幻灯片/i, /演示文稿/i])) return "pptx"
   if (includesAny(text, [/\.md\b/i, /\bmarkdown\b/i, /Markdown/i])) return "md"
   if (includesAny(text, [/\.txt\b/i, /文本文件/i, /txt\s*文件/i])) return "txt"
   if (includesAny(text, [/\.html?\b/i, /\bhtml\b/i, /网页文件/i])) return "html"
@@ -99,7 +106,9 @@ export function buildOutputFileInstruction(request: AiOutputFileRequest | null):
     "",
     "用户明确要求生成可下载文件。",
     `目标格式：${request.label}（.${FORMAT_META[request.format].ext}）。`,
-    "请直接输出可写入该文件的完整正文内容，不要只回复“已生成”。",
+    request.format === "pptx"
+      ? "请输出适合拆成 PPT 页面的大纲内容：每页用清晰标题开头，下面列 3-5 条要点。不要只回复“已生成”。"
+      : "请直接输出可写入该文件的完整正文内容，不要只回复“已生成”。",
     "如果用户提供了附件，请基于附件内容整理成完整文档；如果资料不足，请在正文中说明需要补充的信息。",
   ].join("\n")
 }
@@ -151,6 +160,105 @@ async function createDocxBuffer(text: string): Promise<Buffer> {
   return Buffer.from(await Packer.toBuffer(doc))
 }
 
+function splitIntoSlides(text: string): Array<{ title: string; bullets: string[] }> {
+  const normalized = text.replace(/\r\n/g, "\n").trim()
+  const groups = normalized
+    .split(/\n(?=#{1,3}\s+|第[一二三四五六七八九十\d]+[页部分章节]|Slide\s*\d+|幻灯片\s*\d+)/i)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  const sourceGroups = groups.length >= 2 ? groups : normalized.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean)
+  const slides: Array<{ title: string; bullets: string[] }> = []
+
+  for (const group of sourceGroups) {
+    const lines = group.split("\n").map((line) => stripMarkdownSyntax(line.trim())).filter(Boolean)
+    if (lines.length === 0) continue
+    const title = lines[0].replace(/^第[一二三四五六七八九十\d]+[页部分章节][：:\s-]*/, "").replace(/^Slide\s*\d+[：:\s-]*/i, "").slice(0, 60)
+    const bullets = lines
+      .slice(1)
+      .flatMap((line) => line.split(/[；;]/))
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 6)
+    slides.push({
+      title: title || "内容页",
+      bullets: bullets.length > 0 ? bullets : [lines.slice(1).join(" ").slice(0, 180) || group.slice(0, 180)],
+    })
+    if (slides.length >= 12) break
+  }
+
+  if (slides.length === 0) {
+    slides.push({ title: "灵猫生成 PPT", bullets: [normalized.slice(0, 220) || "暂无内容"] })
+  }
+  return slides
+}
+
+async function createPptxBuffer(text: string): Promise<Buffer> {
+  const pptx = new PptxGenJS()
+  pptx.layout = "LAYOUT_WIDE"
+  pptx.author = "CatTools"
+  pptx.subject = "灵猫助手生成文件"
+  pptx.title = "灵猫生成 PPT"
+  pptx.company = "CatTools"
+  pptx.theme = {
+    headFontFace: "Microsoft YaHei",
+    bodyFontFace: "Microsoft YaHei",
+  }
+
+  const slides = splitIntoSlides(text)
+  for (let i = 0; i < slides.length; i++) {
+    const spec = slides[i]!
+    const slide = pptx.addSlide()
+    slide.background = { color: i === 0 ? "F6F8FB" : "FBFCFE" }
+    slide.addText(spec.title, {
+      x: 0.65,
+      y: 0.48,
+      w: 11.0,
+      h: 0.55,
+      fontFace: "Microsoft YaHei",
+      fontSize: i === 0 ? 28 : 24,
+      bold: true,
+      color: "1F2937",
+      breakLine: false,
+      fit: "shrink",
+    })
+    slide.addShape(pptx.ShapeType.line, {
+      x: 0.68,
+      y: 1.25,
+      w: 1.4,
+      h: 0,
+      line: { color: "2563EB", width: 2 },
+    })
+    slide.addText(
+      spec.bullets.map((bullet) => ({ text: bullet, options: { bullet: { indent: 18 }, hanging: 4 } })),
+      {
+        x: 0.9,
+        y: 1.58,
+        w: 10.4,
+        h: 4.65,
+        fontFace: "Microsoft YaHei",
+        fontSize: 15,
+        color: "374151",
+        breakLine: false,
+        margin: 0.05,
+        fit: "shrink",
+        paraSpaceAfter: 8,
+      },
+    )
+    slide.addText(`${i + 1} / ${slides.length}`, {
+      x: 11.2,
+      y: 6.78,
+      w: 0.7,
+      h: 0.2,
+      fontSize: 8,
+      color: "9CA3AF",
+      align: "right",
+    })
+  }
+
+  const out = await pptx.write({ outputType: "nodebuffer", compression: true })
+  return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer)
+}
+
 export async function createGeneratedFile(
   request: AiOutputFileRequest | null,
   text: string,
@@ -160,6 +268,9 @@ export async function createGeneratedFile(
   switch (request.format) {
     case "docx":
       buffer = await createDocxBuffer(text)
+      break
+    case "pptx":
+      buffer = await createPptxBuffer(text)
       break
     case "html":
       buffer = Buffer.from(
