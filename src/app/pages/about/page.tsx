@@ -1,7 +1,13 @@
 import { Metadata } from "next"
 import { siteConfig } from "@/config/site"
 
-export const metadata: Metadata = { title: "关于我们", description: `${siteConfig.name} 是一个免费在线文件处理工具箱，提供图片压缩、PDF 转换、格式转换等实用工具。` }
+export const metadata: Metadata = {
+  title: "关于我们",
+  description: `${siteConfig.name} 是一个免费在线文件处理工具箱，提供图片压缩、PDF 转换、格式转换等实用工具。`,
+  alternates: {
+    canonical: `${siteConfig.url}/pages/about`,
+  },
+}
 
 export default function AboutPage() {
   return (

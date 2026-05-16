@@ -5,10 +5,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { tools } from "@/config/tools"
 import { applyCategoryPaymentSettings } from "@/lib/payment-settings"
+import { siteConfig } from "@/config/site"
 
 export const metadata: Metadata = {
   title: "定价说明 - 工具积分消耗",
   description: "灵猫转换各工具积分消耗说明，免费工具无限使用，付费工具按次消耗少量积分。",
+  alternates: {
+    canonical: `${siteConfig.url}/pricing`,
+  },
 }
 
 export default function PricingPage() {

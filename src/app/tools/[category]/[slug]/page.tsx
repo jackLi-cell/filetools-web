@@ -27,6 +27,9 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
     title,
     description,
     keywords: seo?.keywords?.join(","),
+    alternates: {
+      canonical: `${siteConfig.url}/tools/${tool.category}/${tool.slug}`,
+    },
     openGraph: {
       title,
       description,

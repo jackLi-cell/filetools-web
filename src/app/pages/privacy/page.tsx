@@ -1,7 +1,13 @@
 import { Metadata } from "next"
 import { siteConfig } from "@/config/site"
 
-export const metadata: Metadata = { title: "隐私政策", description: `${siteConfig.name} 隐私政策：了解我们如何收集、使用和保护您的信息。` }
+export const metadata: Metadata = {
+  title: "隐私政策",
+  description: `${siteConfig.name} 隐私政策：了解我们如何收集、使用和保护您的信息。`,
+  alternates: {
+    canonical: `${siteConfig.url}/pages/privacy`,
+  },
+}
 
 export default function PrivacyPage() {
   return (

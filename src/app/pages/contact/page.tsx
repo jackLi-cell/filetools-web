@@ -1,7 +1,13 @@
 import { Metadata } from "next"
 import { siteConfig } from "@/config/site"
 
-export const metadata: Metadata = { title: "联系我们", description: `联系 ${siteConfig.name}：反馈问题、功能建议或合作咨询。` }
+export const metadata: Metadata = {
+  title: "联系我们",
+  description: `联系 ${siteConfig.name}：反馈问题、功能建议或合作咨询。`,
+  alternates: {
+    canonical: `${siteConfig.url}/pages/contact`,
+  },
+}
 
 export default function ContactPage() {
   return (

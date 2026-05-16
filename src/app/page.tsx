@@ -1,8 +1,16 @@
 import Link from "next/link"
+import { Metadata } from "next"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { categories, tools } from "@/config/tools"
 import { AiHero } from "@/components/ai/ai-hero"
+import { siteConfig } from "@/config/site"
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: siteConfig.url,
+  },
+}
 
 const popularTools = tools.filter(t => t.version === "v0.1").slice(0, 8)
 

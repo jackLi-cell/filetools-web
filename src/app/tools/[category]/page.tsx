@@ -1,15 +1,17 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { Metadata } from "next"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { categories, tools } from "@/config/tools"
 import { applyCategoryPaymentSettings } from "@/lib/payment-settings"
+import { siteConfig } from "@/config/site"
 
 export function generateStaticParams() {
   return categories.map((cat) => ({ category: cat.slug }))
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ category: string }> }) {
+export async function generateMetadata({ params }: { params: Promise<{ category: string }> }): Promise<Metadata> {
   const { category: categorySlug } = await params
   const category = categories.find(c => c.slug === categorySlug)
   if (!category) return {}
@@ -31,6 +33,15 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
   return {
     title: `${category.name} - 在线${category.description}工具 | 灵猫转换`,
     description: categoryDescriptions[categorySlug] || `免费在线${category.name}工具：${category.description}。灵猫转换提供便捷的在线文件处理服务。`,
+    alternates: {
+      canonical: `${siteConfig.url}/tools/${category.slug}`,
+    },
+    openGraph: {
+      title: `${category.name} - 在线${category.description}工具 | 灵猫转换`,
+      description: categoryDescriptions[categorySlug] || `免费在线${category.name}工具：${category.description}。灵猫转换提供便捷的在线文件处理服务。`,
+      url: `${siteConfig.url}/tools/${category.slug}`,
+      type: "website",
+    },
   }
 }
 

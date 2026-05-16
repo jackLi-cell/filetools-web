@@ -1,7 +1,13 @@
 import { Metadata } from "next"
 import { siteConfig } from "@/config/site"
 
-export const metadata: Metadata = { title: "免责声明", description: `${siteConfig.name} 免责声明：了解服务使用条款和责任边界。` }
+export const metadata: Metadata = {
+  title: "免责声明",
+  description: `${siteConfig.name} 免责声明：了解服务使用条款和责任边界。`,
+  alternates: {
+    canonical: `${siteConfig.url}/pages/disclaimer`,
+  },
+}
 
 export default function DisclaimerPage() {
   return (

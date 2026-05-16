@@ -4,10 +4,14 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { categories, tools } from "@/config/tools"
 import { applyCategoryPaymentSettings } from "@/lib/payment-settings"
+import { siteConfig } from "@/config/site"
 
 export const metadata: Metadata = {
   title: "全部工具 - 50+ 在线文件处理工具",
   description: "灵猫转换全部工具列表，按分类浏览所有图片、PDF、视频、音频、Markdown、开发者等在线工具。",
+  alternates: {
+    canonical: `${siteConfig.url}/tools`,
+  },
 }
 
 export default function AllToolsPage() {
