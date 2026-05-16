@@ -106,6 +106,8 @@ export function buildOutputFileInstruction(request: AiOutputFileRequest | null):
     "",
     "用户明确要求生成可下载文件。",
     `目标格式：${request.label}（.${FORMAT_META[request.format].ext}）。`,
+    "服务端会在你回复后自动把正文渲染成真实可下载文件并附加到本次对话中。",
+    "不要声称自己无法生成、无法回传、不能下载或只能让用户复制粘贴该文件。",
     request.format === "pptx"
       ? "请输出适合拆成 PPT 页面的大纲内容：每页用清晰标题开头，下面列 3-5 条要点。不要只回复“已生成”。"
       : "请直接输出可写入该文件的完整正文内容，不要只回复“已生成”。",

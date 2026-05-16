@@ -361,11 +361,33 @@ function buildVisionUnavailableText(imageAttachments: StoredAttachment[]): strin
   ].join("\n")
 }
 
+function buildVisionFailedText(imageAttachments: StoredAttachment[], attempts: Array<{ name: string; error: string }>): string {
+  const names = imageAttachments.map((a) => {
+    const size = a.meta?.width && a.meta?.height ? `，${a.meta.width}x${a.meta.height}` : ""
+    return `- ${a.name} (${a.mime}${size})`
+  })
+  const upstreams = attempts.map((a) => `- ${a.name}: ${a.error.slice(0, 120)}`)
+  return [
+    "当前已收到图片附件，但本次视觉模型调用失败，暂时无法直接识别图片内容。",
+    "",
+    "已收到的图片：",
+    ...names,
+    "",
+    "可尝试的处理方式：",
+    "- 在后台为该上游单独配置可用的视觉模型；",
+    "- 稍后重试，或换用支持图片输入的上游；",
+    "- 如果只是提取图片文字，可以先使用 OCR/文字提取工具，再把文字发给我整理。",
+    "",
+    "本次不会把图片当作已经识别的内容来回答。",
+    ...(upstreams.length > 0 ? ["", "上游返回摘要：", ...upstreams] : []),
+  ].join("\n")
+}
+
 function looksVisionCapableModel(model: string): boolean {
   const normalized = model.trim().toLowerCase()
   return (
-    /^gpt-5(?:[._:-]|$)/.test(normalized) ||
-    /^gpt-4(?:o|\.1|\.5)?(?:[._:-]|$)/.test(normalized) ||
+    /^gpt-4o(?:[._:-]|$)/.test(normalized) ||
+    /^gpt-4\.1(?:[._:-]|$)/.test(normalized) ||
     normalized.includes("vision") ||
     normalized.includes("qwen-vl") ||
     normalized.includes("gemini") ||
@@ -1129,6 +1151,9 @@ export async function streamChat(
   console.error(
     `[ai-service] all ${candidates.length} upstreams failed: ${JSON.stringify(attempts)}`,
   )
+  if (hasImageAttachments) {
+    return createSyntheticTextResult(buildVisionFailedText(imageAttachments, attempts))
+  }
   throw new AllUpstreamsFailedError(attempts)
 }
 
