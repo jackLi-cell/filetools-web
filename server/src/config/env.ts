@@ -22,6 +22,7 @@ const DEFAULT_AI_SYSTEM_PROMPT = `你是"灵猫助手"，一个专为本工具�
 
 export const env = {
   port: Number(process.env.PORT) || 4000,
+  host: process.env.HOST || "0.0.0.0",
   nodeEnv: process.env.NODE_ENV || "development",
   corsOrigin: process.env.CORS_ORIGIN || "http://localhost:3000",
   databaseUrl: process.env.DATABASE_URL || "",

@@ -43,8 +43,8 @@ app.use("/api/ai", aiRouter)
 
 app.use(errorHandler)
 
-app.listen(env.port, () => {
-  console.log(`[Server] Running on port ${env.port} (${env.nodeEnv})`)
+app.listen(env.port, env.host, () => {
+  console.log(`[Server] Running on ${env.host}:${env.port} (${env.nodeEnv})`)
 })
 
 export default app
