@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client"
 import { z } from "zod"
 import { requireAdmin } from "../../middleware/auth.js"
 import { encrypt, decrypt, maskApiKey } from "../../services/ai-encryption.js"
+import { validatePublicBaseUrl } from "../../services/public-base-url.js"
 import { invalidateCache as invalidateUpstreamCache } from "../../services/ai-upstream-manager.js"
 import {
   getSystemPrompt,
@@ -102,6 +103,11 @@ router.post("/upstreams", ar(async (req: Request, res: Response) => {
     return
   }
   const { apiKey, ...rest } = parsed.data
+  const baseUrlError = await validatePublicBaseUrl(rest.baseUrl)
+  if (baseUrlError) {
+    res.status(400).json({ code: 400, message: baseUrlError })
+    return
+  }
   const created = await prisma.aiUpstream.create({
     data: {
       ...rest,
@@ -129,6 +135,11 @@ router.patch("/upstreams/:id", ar(async (req: Request, res: Response) => {
     return
   }
   const { apiKey, ...rest } = parsed.data
+  const baseUrlError = await validatePublicBaseUrl(rest.baseUrl)
+  if (baseUrlError) {
+    res.status(400).json({ code: 400, message: baseUrlError })
+    return
+  }
   const data: Record<string, unknown> = { ...rest }
   if (typeof apiKey === "string" && apiKey.length > 0) {
     data.apiKeyEnc = encrypt(apiKey)

@@ -133,11 +133,16 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
         return
       }
 
-      await fetch(uploadRes.data.uploadUrl, {
+      const fileUploadRes = await fetch(uploadRes.data.uploadUrl, {
         method: "PUT",
         body: file,
         headers: { "Content-Type": file.type || "application/octet-stream" },
       })
+      if (!fileUploadRes.ok) {
+        setError("文件上传失败")
+        setUploading(false)
+        return
+      }
 
       const taskRes = await api.post<{ taskId: string }>(`/api/process/${toolSlug}`, {
         fileKey: uploadRes.data.fileKey,

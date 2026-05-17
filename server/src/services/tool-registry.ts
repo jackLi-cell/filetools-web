@@ -18,10 +18,14 @@ import { attachmentStore } from "./attachment-store.js"
 const TOOL_SLUGS = TOOLS.map((t) => t.slug) as [string, ...string[]]
 const toolParamValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()])
 
+function promptSafeText(value: string, maxLength = 120): string {
+  return value.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength)
+}
+
 /**
  * 构建 streamText 的 tools 对象
  */
-export function buildTools(): ToolSet {
+export function buildTools(allowedAttachmentIds: Set<string> = new Set()): ToolSet {
   return {
     open_tool: tool({
       description:
@@ -50,7 +54,7 @@ export function buildTools(): ToolSet {
         let expiresAt: number | null = null
         let resolvedName: string | null = null
         let resolvedMime: string | null = null
-        if (args.attachmentId) {
+        if (args.attachmentId && allowedAttachmentIds.has(args.attachmentId)) {
           const stored = attachmentStore.get(args.attachmentId)
           if (stored) {
             signedToken = stored.signedToken
@@ -64,7 +68,7 @@ export function buildTools(): ToolSet {
           slug: args.slug,
           reason: args.reason,
           params: args.params ?? {},
-          attachmentId: args.attachmentId ?? null,
+          attachmentId: args.attachmentId && allowedAttachmentIds.has(args.attachmentId) ? args.attachmentId : null,
           signedToken,
           expiresAt,
           attachmentName: resolvedName,
@@ -110,7 +114,7 @@ export function buildAttachmentsHint(
   if (attachments.length === 0) return ""
   let s = "\n\n用户本次上传了以下附件，可在 open_tool 调用时传 attachmentId 字段：\n"
   for (const a of attachments) {
-    s += `- ${a.id} (${a.name}, ${a.mime})\n`
+    s += `- ${a.id} (${promptSafeText(a.name)}, ${promptSafeText(a.mime, 80)})\n`
   }
   return s
 }

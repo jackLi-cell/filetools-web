@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client"
-import { deleteFile } from "../config/r2.js"
+import { deleteFile } from "../config/storage.js"
 
 const prisma = new PrismaClient()
 

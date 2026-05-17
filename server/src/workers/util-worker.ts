@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client"
 import { mkdtemp, rm, readFile, writeFile } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
-import { getUploadUrl, getDownloadUrl } from "../config/r2.js"
+import { downloadFileFromStorage, uploadFileToStorage } from "../config/storage.js"
 
 const prisma = new PrismaClient()
 
@@ -15,17 +15,12 @@ interface UtilJobData {
   params: Record<string, unknown>
 }
 
-async function downloadFromR2(fileKey: string, destPath: string) {
-  const url = await getDownloadUrl(fileKey)
-  const response = await fetch(url)
-  await writeFile(destPath, Buffer.from(await response.arrayBuffer()))
+async function downloadFromStorage(fileKey: string, destPath: string) {
+  await downloadFileFromStorage(fileKey, destPath)
 }
 
-async function uploadToR2(filePath: string, key: string, contentType: string): Promise<number> {
-  const fileBuffer = await readFile(filePath)
-  const uploadUrl = await getUploadUrl(key, contentType)
-  await fetch(uploadUrl, { method: "PUT", body: fileBuffer, headers: { "Content-Type": contentType } })
-  return fileBuffer.length
+async function uploadToStorage(filePath: string, key: string, _contentType: string): Promise<number> {
+  return uploadFileToStorage(filePath, key)
 }
 
 async function markProcessing(taskId: string) {
@@ -49,7 +44,7 @@ export async function processCsvToExcel(job: Job<UtilJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const ExcelJS = (await import("exceljs")).default
     const csvContent = await readFile(inputPath, "utf-8")
@@ -64,7 +59,7 @@ export async function processCsvToExcel(job: Job<UtilJobData>) {
     await workbook.xlsx.writeFile(outputPath)
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "CSV 转 Excel 失败")
@@ -80,7 +75,7 @@ export async function processExcelToCsv(job: Job<UtilJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const ExcelJS = (await import("exceljs")).default
     const workbook = new ExcelJS.Workbook()
@@ -102,7 +97,7 @@ export async function processExcelToCsv(job: Job<UtilJobData>) {
     await writeFile(outputPath, rows.join("\n"), "utf-8")
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "text/csv")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "text/csv")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "Excel 转 CSV 失败")
@@ -118,7 +113,7 @@ export async function processBatchQrcode(job: Job<UtilJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const content = await readFile(inputPath, "utf-8")
     const lines = content.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 100)
@@ -144,7 +139,7 @@ export async function processBatchQrcode(job: Job<UtilJobData>) {
     await new Promise<void>((resolve) => output.on("close", resolve))
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/zip")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/zip")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "批量二维码生成失败")
@@ -160,7 +155,7 @@ export async function processSignaturePdf(job: Job<UtilJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const { PDFDocument } = await import("pdf-lib")
     const pdfBytes = await readFile(inputPath)
@@ -189,7 +184,7 @@ export async function processSignaturePdf(job: Job<UtilJobData>) {
     await writeFile(outputPath, outputBytes)
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "签名插入失败")
@@ -205,7 +200,7 @@ export async function processMarkdownToPdf(job: Job<UtilJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const mdContent = await readFile(inputPath, "utf-8")
     const { marked } = await import("marked")
@@ -239,7 +234,7 @@ export async function processMarkdownToPdf(job: Job<UtilJobData>) {
     await browser.close()
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "Markdown 转 PDF 失败")
@@ -255,7 +250,7 @@ export async function processHtmlToPdf(job: Job<UtilJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const puppeteer = await import("puppeteer")
     const browser = await puppeteer.default.launch({
@@ -271,7 +266,7 @@ export async function processHtmlToPdf(job: Job<UtilJobData>) {
     await browser.close()
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "HTML 转 PDF 失败")
@@ -287,7 +282,7 @@ export async function processPdfAddPageNumbers(job: Job<UtilJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const { PDFDocument, rgb, StandardFonts } = await import("pdf-lib")
     const pdfBytes = await readFile(inputPath)
@@ -314,7 +309,7 @@ export async function processPdfAddPageNumbers(job: Job<UtilJobData>) {
     await writeFile(outputPath, await pdfDoc.save())
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "添加页码失败")

@@ -5,7 +5,7 @@ import { promisify } from "util"
 import { mkdtemp, rm, readdir, readFile, writeFile, stat } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
-import { getUploadUrl, getDownloadUrl } from "../config/r2.js"
+import { downloadFileFromStorage, uploadFileToStorage } from "../config/storage.js"
 import { createWorker } from "../config/queue.js"
 import { processVideoCompress, processVideoConvert, processVideoToGif, processVideoExtractAudio, processAudioConvert, processAudioCompress, processAudioTrim, processAudioMerge } from "./media-worker.js"
 import { processVisibleWatermark, processInvisibleWatermark, processDetectWatermark } from "./image-worker.js"
@@ -25,18 +25,12 @@ interface ProcessJobData {
   params: Record<string, unknown>
 }
 
-async function downloadFromR2(fileKey: string, destPath: string) {
-  const url = await getDownloadUrl(fileKey)
-  const response = await fetch(url)
-  const buffer = Buffer.from(await response.arrayBuffer())
-  await writeFile(destPath, buffer)
+async function downloadFromStorage(fileKey: string, destPath: string) {
+  await downloadFileFromStorage(fileKey, destPath)
 }
 
-async function uploadToR2(filePath: string, key: string, contentType: string): Promise<number> {
-  const fileBuffer = await readFile(filePath)
-  const uploadUrl = await getUploadUrl(key, contentType)
-  await fetch(uploadUrl, { method: "PUT", body: fileBuffer, headers: { "Content-Type": contentType } })
-  return fileBuffer.length
+async function uploadToStorage(filePath: string, key: string, _contentType: string): Promise<number> {
+  return uploadFileToStorage(filePath, key)
 }
 
 async function markProcessing(taskId: string) {
@@ -63,7 +57,7 @@ async function processPdfToImage(job: Job<ProcessJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const outputFileName = inputFileName.replace(/\.pdf$/i, "_page1.png")
     const outputPath = join(workDir, outputFileName)
@@ -75,7 +69,7 @@ async function processPdfToImage(job: Job<ProcessJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "image/png")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "image/png")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 转图片失败")
@@ -91,7 +85,7 @@ async function processPdfSplit(job: Job<ProcessJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const startPage = Number(params.startPage) || 1
     const endPage = Number(params.endPage) || 1
@@ -105,7 +99,7 @@ async function processPdfSplit(job: Job<ProcessJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 拆分失败")
@@ -121,7 +115,7 @@ async function processPdfCompress(job: Job<ProcessJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const outputFileName = `compressed_${inputFileName}`
     const outputPath = join(workDir, outputFileName)
@@ -134,7 +128,7 @@ async function processPdfCompress(job: Job<ProcessJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 压缩失败")
@@ -150,7 +144,7 @@ async function processPdfMerge(job: Job<ProcessJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const outputFileName = "merged.pdf"
     const outputPath = join(workDir, outputFileName)
@@ -161,7 +155,7 @@ async function processPdfMerge(job: Job<ProcessJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 合并失败")
@@ -177,7 +171,7 @@ async function processImageToPdf(job: Job<ProcessJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const outputFileName = inputFileName.replace(/\.\w+$/, ".pdf")
     const outputPath = join(workDir, outputFileName)
@@ -188,7 +182,7 @@ async function processImageToPdf(job: Job<ProcessJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "图片转 PDF 失败")

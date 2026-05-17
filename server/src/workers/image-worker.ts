@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client"
 import { mkdtemp, rm, readFile, writeFile } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
-import { getUploadUrl, getDownloadUrl } from "../config/r2.js"
+import { downloadFileFromStorage, uploadFileToStorage } from "../config/storage.js"
 
 const prisma = new PrismaClient()
 
@@ -15,17 +15,12 @@ interface ImageJobData {
   params: Record<string, unknown>
 }
 
-async function downloadFromR2(fileKey: string, destPath: string) {
-  const url = await getDownloadUrl(fileKey)
-  const response = await fetch(url)
-  await writeFile(destPath, Buffer.from(await response.arrayBuffer()))
+async function downloadFromStorage(fileKey: string, destPath: string) {
+  await downloadFileFromStorage(fileKey, destPath)
 }
 
-async function uploadToR2(filePath: string, key: string, contentType: string): Promise<number> {
-  const fileBuffer = await readFile(filePath)
-  const uploadUrl = await getUploadUrl(key, contentType)
-  await fetch(uploadUrl, { method: "PUT", body: fileBuffer, headers: { "Content-Type": contentType } })
-  return fileBuffer.length
+async function uploadToStorage(filePath: string, key: string, _contentType: string): Promise<number> {
+  return uploadFileToStorage(filePath, key)
 }
 
 async function markProcessing(taskId: string) {
@@ -49,7 +44,7 @@ export async function processVisibleWatermark(job: Job<ImageJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const sharp = (await import("sharp")).default
     const text = String(params.text || "CatConvert")
@@ -74,7 +69,7 @@ export async function processVisibleWatermark(job: Job<ImageJobData>) {
       .toFile(outputPath)
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "image/png")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "image/png")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "添加水印失败")
@@ -90,7 +85,7 @@ export async function processInvisibleWatermark(job: Job<ImageJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const sharp = (await import("sharp")).default
     const message = String(params.message || "CatConvert")
@@ -116,7 +111,7 @@ export async function processInvisibleWatermark(job: Job<ImageJobData>) {
       .toFile(outputPath)
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "image/png")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "image/png")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "隐形水印嵌入失败")
@@ -132,7 +127,7 @@ export async function processDetectWatermark(job: Job<ImageJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const sharp = (await import("sharp")).default
     const { data, info } = await sharp(inputPath).raw().toBuffer({ resolveWithObject: true })
@@ -158,7 +153,7 @@ export async function processDetectWatermark(job: Job<ImageJobData>) {
     await writeFile(outputPath, `检测到的隐形水印内容：\n${message}\n`)
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "text/plain")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "text/plain")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "水印检测失败")

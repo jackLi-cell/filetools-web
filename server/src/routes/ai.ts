@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto"
 import { Router, type Request, type Response } from "express"
 import { z } from "zod"
 import busboy from "busboy"
@@ -16,14 +17,16 @@ const router = Router()
 /**
  * 聊天消息体（兼容 Vercel AI SDK useChat 的 messages 格式）
  */
-const messagePartSchema = z.union([
-  z.object({ type: z.literal("text"), text: z.string() }),
-  z.object({ type: z.literal("image"), image: z.union([z.string(), z.instanceof(Uint8Array)]) }),
-])
+const ANON_ATTACHMENT_COOKIE = "ai_attachment_owner"
+
+const messagePartSchema = z.object({
+  type: z.literal("text"),
+  text: z.string().max(env.ai.maxContextChars),
+})
 
 const messageSchema = z.object({
-  role: z.enum(["system", "user", "assistant", "tool"]),
-  content: z.union([z.string(), z.array(messagePartSchema)]),
+  role: z.enum(["user", "assistant"]),
+  content: z.union([z.string().max(env.ai.maxContextChars), z.array(messagePartSchema).max(20)]),
 })
 
 const chatBodySchema = z.object({
@@ -44,6 +47,29 @@ async function checkAiEnabled(_req: Request, res: Response, next: () => void): P
     return
   }
   next()
+}
+
+function getAnonymousAttachmentToken(req: Request, res?: Response): string {
+  const existing = String(req.cookies?.[ANON_ATTACHMENT_COOKIE] || "")
+  if (/^[a-f0-9]{32}$/.test(existing)) return existing
+
+  const token = randomBytes(16).toString("hex")
+  if (res) {
+    res.cookie(ANON_ATTACHMENT_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: env.nodeEnv === "production",
+      maxAge: env.ai.attachmentTtlSec * 1000,
+      path: "/",
+    })
+  }
+  return token
+}
+
+function getAttachmentOwnerKey(req: Request, res?: Response): string {
+  const userId = (req as { userId?: number }).userId
+  if (typeof userId === "number") return `user:${userId}`
+  return `anon:${getAnonymousAttachmentToken(req, res)}`
 }
 
 /**
@@ -94,10 +120,12 @@ router.post("/chat", softAuth, checkAiEnabled, aiRateLimit, async (req: Request,
 
   try {
     const userId = (req as { userId?: number }).userId
+    const attachmentOwnerKey = getAttachmentOwnerKey(req, res)
 
     const result = await streamChat({
       messages: parsed.data.messages as CoreMessage[],
       attachmentIds: parsed.data.attachmentIds,
+      attachmentOwnerKey,
       abortSignal: controller.signal,
       userId,
     })
@@ -183,17 +211,29 @@ function normalizeUploadedFileName(name: string | undefined): string {
   const trimmed = name.trim()
   if (!trimmed) return fallback
 
+  const sanitize = (value: string) => {
+    const normalized = value
+      .replace(/[\u0000-\u001F\u007F]/g, "")
+      .replace(/[\\/]+/g, "_")
+      .replace(/\.\.+/g, ".")
+      .replace(/[^\p{L}\p{N}._ -]/gu, "_")
+      .replace(/^\.+/, "")
+      .trim()
+      .slice(0, 160)
+    return normalized || fallback
+  }
+
   try {
     const decoded = Buffer.from(trimmed, "latin1").toString("utf8")
     const hasMojibake = /[ÃÂ¤åæçèéä»�ï¿½]/.test(trimmed)
     if (hasMojibake && decoded && !decoded.includes("\uFFFD")) {
-      return decoded
+      return sanitize(decoded)
     }
   } catch {
     // keep original
   }
 
-  return trimmed
+  return sanitize(trimmed)
 }
 
 /**
@@ -214,6 +254,7 @@ router.post("/attach", softAuth, checkAiEnabled, aiAttachRateLimit, (req: Reques
     res.status(400).json({ code: 400, message: "请使用 multipart/form-data 上传" })
     return
   }
+  const ownerKey = getAttachmentOwnerKey(req, res)
 
   let bb: ReturnType<typeof busboy>
   try {
@@ -326,6 +367,7 @@ router.post("/attach", softAuth, checkAiEnabled, aiAttachRateLimit, (req: Reques
         let stored
         try {
           stored = attachmentStore.put({
+            ownerKey,
             buffer,
             mime: finalMime,
             name: fileName,
@@ -402,7 +444,7 @@ router.get("/attach/:id", softAuth, (req: Request, res: Response) => {
     res.status(400).json({ code: 400, message: "缺少 id" })
     return
   }
-  const item = attachmentStore.get(id)
+  const item = attachmentStore.get(id, getAttachmentOwnerKey(req))
   if (!item) {
     res.status(404).json({ code: 404, message: "附件不存在或已过期" })
     return
@@ -422,7 +464,7 @@ router.get("/attach/:id", softAuth, (req: Request, res: Response) => {
  * GET /api/ai/attach/:id/blob?token=xxx
  * 凭 token 拉取原始 buffer，供工具页面预填使用。
  */
-router.get("/attach/:id/blob", (req: Request, res: Response) => {
+router.get("/attach/:id/blob", softAuth, (req: Request, res: Response) => {
   const id = req.params.id as string | undefined
   const token = (req.query.token as string | undefined) || ""
   if (!id) {
@@ -433,12 +475,13 @@ router.get("/attach/:id/blob", (req: Request, res: Response) => {
     res.status(400).json({ code: 400, message: "缺少 token" })
     return
   }
-  const item = attachmentStore.get(id)
+  const ownerKey = getAttachmentOwnerKey(req)
+  const item = attachmentStore.get(id, ownerKey)
   if (!item) {
     res.status(404).json({ code: 404, message: "附件不存在或已过期" })
     return
   }
-  if (!attachmentStore.validateToken(id, token)) {
+  if (!attachmentStore.validateToken(id, token, ownerKey)) {
     res.status(403).json({ code: 403, message: "token 不匹配" })
     return
   }

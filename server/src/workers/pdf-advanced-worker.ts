@@ -5,7 +5,7 @@ import { promisify } from "util"
 import { mkdtemp, rm, readFile, writeFile } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
-import { getUploadUrl, getDownloadUrl } from "../config/r2.js"
+import { downloadFileFromStorage, uploadFileToStorage } from "../config/storage.js"
 
 const execFileAsync = promisify(execFile)
 const prisma = new PrismaClient()
@@ -18,17 +18,12 @@ interface PdfJobData {
   params: Record<string, unknown>
 }
 
-async function downloadFromR2(fileKey: string, destPath: string) {
-  const url = await getDownloadUrl(fileKey)
-  const response = await fetch(url)
-  await writeFile(destPath, Buffer.from(await response.arrayBuffer()))
+async function downloadFromStorage(fileKey: string, destPath: string) {
+  await downloadFileFromStorage(fileKey, destPath)
 }
 
-async function uploadToR2(filePath: string, key: string, contentType: string): Promise<number> {
-  const fileBuffer = await readFile(filePath)
-  const uploadUrl = await getUploadUrl(key, contentType)
-  await fetch(uploadUrl, { method: "PUT", body: fileBuffer, headers: { "Content-Type": contentType } })
-  return fileBuffer.length
+async function uploadToStorage(filePath: string, key: string, _contentType: string): Promise<number> {
+  return uploadFileToStorage(filePath, key)
 }
 
 async function markProcessing(taskId: string) {
@@ -52,7 +47,7 @@ export async function processPdfRotate(job: Job<PdfJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const angle = Number(params.angle) || 90 // 90, 180, 270
     const outputFileName = `rotated_${inputFileName}`
@@ -63,7 +58,7 @@ export async function processPdfRotate(job: Job<PdfJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 旋转失败")
@@ -79,7 +74,7 @@ export async function processPdfEncrypt(job: Job<PdfJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const password = String(params.password || "")
     if (!password) throw new Error("请提供密码")
@@ -93,7 +88,7 @@ export async function processPdfEncrypt(job: Job<PdfJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 加密失败")
@@ -109,7 +104,7 @@ export async function processPdfDecrypt(job: Job<PdfJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const password = String(params.password || "")
     if (!password) throw new Error("请提供 PDF 密码")
@@ -122,7 +117,7 @@ export async function processPdfDecrypt(job: Job<PdfJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 解密失败，请检查密码")
@@ -138,7 +133,7 @@ export async function processPdfExtract(job: Job<PdfJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const pages = String(params.pages || "1") // 例如 "1,3,5" 或 "1-5"
     const outputFileName = `extracted_${inputFileName}`
@@ -149,7 +144,7 @@ export async function processPdfExtract(job: Job<PdfJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 页面提取失败")
@@ -165,7 +160,7 @@ export async function processFileHash(job: Job<PdfJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const crypto = await import("crypto")
     const buffer = await readFile(inputPath)
@@ -179,7 +174,7 @@ export async function processFileHash(job: Job<PdfJobData>) {
     await writeFile(outputPath, content)
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "text/plain")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "text/plain")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "哈希计算失败")
@@ -195,7 +190,7 @@ export async function processClearMetadata(job: Job<PdfJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const outputFileName = `cleaned_${inputFileName}`
     const outputPath = join(workDir, outputFileName)
@@ -212,7 +207,7 @@ export async function processClearMetadata(job: Job<PdfJobData>) {
 
     const contentType = ext === "pdf" ? "application/pdf" : `image/${ext === "jpg" ? "jpeg" : ext}`
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, contentType)
+    const outputSize = await uploadToStorage(outputPath, outputKey, contentType)
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "元数据清除失败")

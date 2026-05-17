@@ -10,6 +10,11 @@ function required(key: string, fallback?: string): string {
   return value
 }
 
+const storageDriver = process.env.STORAGE_DRIVER === "cos" ? "cos" : "local"
+const defaultStorageRoot = process.env.NODE_ENV === "production"
+  ? (storageDriver === "cos" ? "/lhcos-data/cattools" : "/opt/filetools/storage")
+  : "./storage"
+
 const DEFAULT_AI_SYSTEM_PROMPT = `你是"灵猫助手"，一个专为本工具站用户提供文件处理建议与文档问答的 AI 助手。
 
 服务边界（请严格遵守）：
@@ -28,12 +33,11 @@ export const env = {
   databaseUrl: process.env.DATABASE_URL || "",
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
   sessionSecret: process.env.SESSION_SECRET || "dev-secret",
-  r2: {
-    accountId: process.env.R2_ACCOUNT_ID || "",
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
-    bucketName: process.env.R2_BUCKET_NAME || "filetools",
-    publicUrl: process.env.R2_PUBLIC_URL || "",
+  storage: {
+    driver: storageDriver,
+    root: process.env.STORAGE_ROOT || defaultStorageRoot,
+    uploadUrlExpiresSec: Number(process.env.STORAGE_UPLOAD_URL_EXPIRES_SECONDS || 900),
+    downloadUrlExpiresSec: Number(process.env.STORAGE_DOWNLOAD_URL_EXPIRES_SECONDS || 7200),
   },
   ai: {
     encryptionKey: required("AI_ENCRYPTION_KEY"),

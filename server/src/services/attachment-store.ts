@@ -27,6 +27,7 @@ const SWEEP_INTERVAL_MS = 60_000
 
 export interface StoredAttachment {
   id: string
+  ownerKey: string
   buffer: Buffer
   mime: string
   name: string
@@ -52,6 +53,7 @@ export interface AttachmentMeta {
 }
 
 export interface AttachmentInputData {
+  ownerKey: string
   buffer: Buffer
   mime: string
   name: string
@@ -111,6 +113,7 @@ class AttachmentStore {
     const signedToken = crypto.randomBytes(16).toString("hex")
     const item: StoredAttachment = {
       id,
+      ownerKey: data.ownerKey,
       buffer: data.buffer,
       mime: data.mime,
       name: data.name,
@@ -127,18 +130,19 @@ class AttachmentStore {
     return item
   }
 
-  get(id: string): StoredAttachment | null {
+  get(id: string, ownerKey?: string): StoredAttachment | null {
     const item = this.items.get(id)
     if (!item) return null
     if (item.expiresAt <= Date.now()) {
       this.delete(id)
       return null
     }
+    if (ownerKey && item.ownerKey !== ownerKey) return null
     return item
   }
 
-  validateToken(id: string, token: string): boolean {
-    const item = this.get(id)
+  validateToken(id: string, token: string, ownerKey?: string): boolean {
+    const item = this.get(id, ownerKey)
     if (!item) return false
     // 长度不一致直接 false（避免 timingSafeEqual 抛异常）
     if (item.signedToken.length !== token.length) return false

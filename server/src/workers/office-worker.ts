@@ -5,7 +5,7 @@ import { promisify } from "util"
 import { mkdtemp, rm, readdir, readFile, writeFile } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
-import { getUploadUrl, getDownloadUrl } from "../config/r2.js"
+import { downloadFileFromStorage, uploadFileToStorage } from "../config/storage.js"
 
 const execFileAsync = promisify(execFile)
 const prisma = new PrismaClient()
@@ -18,17 +18,12 @@ interface OfficeJobData {
   params: Record<string, unknown>
 }
 
-async function downloadFromR2(fileKey: string, destPath: string) {
-  const url = await getDownloadUrl(fileKey)
-  const response = await fetch(url)
-  await writeFile(destPath, Buffer.from(await response.arrayBuffer()))
+async function downloadFromStorage(fileKey: string, destPath: string) {
+  await downloadFileFromStorage(fileKey, destPath)
 }
 
-async function uploadToR2(filePath: string, key: string, contentType: string): Promise<number> {
-  const fileBuffer = await readFile(filePath)
-  const uploadUrl = await getUploadUrl(key, contentType)
-  await fetch(uploadUrl, { method: "PUT", body: fileBuffer, headers: { "Content-Type": contentType } })
-  return fileBuffer.length
+async function uploadToStorage(filePath: string, key: string, _contentType: string): Promise<number> {
+  return uploadFileToStorage(filePath, key)
 }
 
 async function markProcessing(taskId: string) {
@@ -70,13 +65,13 @@ export async function processWordToPdf(job: Job<OfficeJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const outputPath = await libreofficeConvert(inputPath, workDir, "pdf")
     const outputFileName = outputPath.split("/").pop()!
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "Word 转 PDF 失败")
@@ -92,13 +87,13 @@ export async function processPdfToWord(job: Job<OfficeJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const outputPath = await libreofficeConvert(inputPath, workDir, "docx")
     const outputFileName = outputPath.split("/").pop()!
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 转 Word 失败")
@@ -114,13 +109,13 @@ export async function processExcelToPdf(job: Job<OfficeJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const outputPath = await libreofficeConvert(inputPath, workDir, "pdf")
     const outputFileName = outputPath.split("/").pop()!
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "Excel 转 PDF 失败")
@@ -136,7 +131,7 @@ export async function processExcelToImage(job: Job<OfficeJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     // Excel → PDF → Image
     const pdfPath = await libreofficeConvert(inputPath, workDir, "pdf")
@@ -151,7 +146,7 @@ export async function processExcelToImage(job: Job<OfficeJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "image/png")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "image/png")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "Excel 转图片失败")
@@ -167,13 +162,13 @@ export async function processPptToPdf(job: Job<OfficeJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     const outputPath = await libreofficeConvert(inputPath, workDir, "pdf")
     const outputFileName = outputPath.split("/").pop()!
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PPT 转 PDF 失败")
@@ -189,7 +184,7 @@ export async function processPptToImage(job: Job<OfficeJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     // PPT → PDF → Image
     const pdfPath = await libreofficeConvert(inputPath, workDir, "pdf")
@@ -204,7 +199,7 @@ export async function processPptToImage(job: Job<OfficeJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "image/png")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "image/png")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PPT 转图片失败")
@@ -220,7 +215,7 @@ export async function processWordToImage(job: Job<OfficeJobData>) {
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
-    await downloadFromR2(inputFileKey, inputPath)
+    await downloadFromStorage(inputFileKey, inputPath)
 
     // Word → PDF → Image
     const pdfPath = await libreofficeConvert(inputPath, workDir, "pdf")
@@ -235,7 +230,7 @@ export async function processWordToImage(job: Job<OfficeJobData>) {
     ], { timeout: 60000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToR2(outputPath, outputKey, "image/png")
+    const outputSize = await uploadToStorage(outputPath, outputKey, "image/png")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "Word 转图片失败")
