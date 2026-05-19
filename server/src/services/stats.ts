@@ -67,20 +67,40 @@ export async function recordToolUsage(toolSlug: string, success: boolean, proces
       }
     })
 
-    await prisma.dailyStat.upsert({
+    const dailyUpdated = await prisma.dailyStat.updateMany({
       where: { date: today },
-      update: {
+      data: {
         totalTasks: { increment: 1 },
         successTasks: { increment: success ? 1 : 0 },
         creditsSpent: { increment: creditsCost },
       },
-      create: {
-        date: today,
-        totalTasks: 1,
-        successTasks: success ? 1 : 0,
-        creditsSpent: creditsCost,
-      },
     })
+    if (dailyUpdated.count === 0) {
+      try {
+        await prisma.dailyStat.create({
+          data: {
+            date: today,
+            totalTasks: 1,
+            successTasks: success ? 1 : 0,
+            creditsSpent: creditsCost,
+          },
+        })
+      } catch (error: unknown) {
+        const code = typeof error === "object" && error && "code" in error ? String((error as { code?: string }).code) : ""
+        if (code === "P2002") {
+          await prisma.dailyStat.updateMany({
+            where: { date: today },
+            data: {
+              totalTasks: { increment: 1 },
+              successTasks: { increment: success ? 1 : 0 },
+              creditsSpent: { increment: creditsCost },
+            },
+          })
+        } else {
+          throw error
+        }
+      }
+    }
   } catch (err) {
     console.error("[Stats] Failed to record usage:", err)
   }
