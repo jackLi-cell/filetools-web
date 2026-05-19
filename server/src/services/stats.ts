@@ -7,32 +7,16 @@ export async function recordToolUsage(toolSlug: string, success: boolean, proces
   today.setHours(0, 0, 0, 0)
 
   try {
-    const existing = await prisma.toolDailyStat.findFirst({
-      where: { date: today, toolSlug },
-    })
-
-    if (existing) {
-      const newUseCount = existing.useCount + 1
-      const newSuccessCount = existing.successCount + (success ? 1 : 0)
-      const newFailCount = existing.failCount + (success ? 0 : 1)
-      const newCredits = existing.creditsConsumed + creditsCost
-      const newAvgMs = Math.round(
-        (existing.avgProcessMs * existing.useCount + processTimeMs) / newUseCount
-      )
-
-      await prisma.toolDailyStat.update({
-        where: { id: existing.id },
-        data: {
-          useCount: newUseCount,
-          successCount: newSuccessCount,
-          failCount: newFailCount,
-          creditsConsumed: newCredits,
-          avgProcessMs: newAvgMs,
+    await prisma.$transaction(async (tx) => {
+      await tx.toolDailyStat.upsert({
+        where: { date_toolSlug: { date: today, toolSlug } },
+        update: {
+          useCount: { increment: 1 },
+          successCount: { increment: success ? 1 : 0 },
+          failCount: { increment: success ? 0 : 1 },
+          creditsConsumed: { increment: creditsCost },
         },
-      })
-    } else {
-      await prisma.toolDailyStat.create({
-        data: {
+        create: {
           date: today,
           toolSlug,
           useCount: 1,
@@ -42,7 +26,22 @@ export async function recordToolUsage(toolSlug: string, success: boolean, proces
           avgProcessMs: processTimeMs,
         },
       })
-    }
+
+      const current = await tx.toolDailyStat.findUnique({
+        where: { date_toolSlug: { date: today, toolSlug } },
+        select: { id: true, useCount: true, avgProcessMs: true },
+      })
+      if (current) {
+        const previousUseCount = Math.max(current.useCount - 1, 0)
+        const avgProcessMs = Math.round(
+          (current.avgProcessMs * previousUseCount + processTimeMs) / current.useCount,
+        )
+        await tx.toolDailyStat.update({
+          where: { id: current.id },
+          data: { avgProcessMs },
+        })
+      }
+    })
 
     await prisma.dailyStat.upsert({
       where: { date: today },
