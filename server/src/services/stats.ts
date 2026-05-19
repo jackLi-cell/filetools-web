@@ -5,30 +5,54 @@ const prisma = new PrismaClient()
 export async function recordToolUsage(toolSlug: string, success: boolean, processTimeMs: number, creditsCost: number) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
+  const filter = { date: today, toolSlug }
+  const uniqueWhere = { date_toolSlug: { date: today, toolSlug } }
 
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.toolDailyStat.upsert({
-        where: { date_toolSlug: { date: today, toolSlug } },
-        update: {
+      const updated = await tx.toolDailyStat.updateMany({
+        where: filter,
+        data: {
           useCount: { increment: 1 },
           successCount: { increment: success ? 1 : 0 },
           failCount: { increment: success ? 0 : 1 },
           creditsConsumed: { increment: creditsCost },
         },
-        create: {
-          date: today,
-          toolSlug,
-          useCount: 1,
-          successCount: success ? 1 : 0,
-          failCount: success ? 0 : 1,
-          creditsConsumed: creditsCost,
-          avgProcessMs: processTimeMs,
-        },
       })
 
+      if (updated.count === 0) {
+        try {
+          await tx.toolDailyStat.create({
+            data: {
+              date: today,
+              toolSlug,
+              useCount: 1,
+              successCount: success ? 1 : 0,
+              failCount: success ? 0 : 1,
+              creditsConsumed: creditsCost,
+              avgProcessMs: processTimeMs,
+            },
+          })
+        } catch (error: unknown) {
+          const code = typeof error === "object" && error && "code" in error ? String((error as { code?: string }).code) : ""
+          if (code === "P2002") {
+          await tx.toolDailyStat.updateMany({
+              where: filter,
+              data: {
+                useCount: { increment: 1 },
+                successCount: { increment: success ? 1 : 0 },
+                failCount: { increment: success ? 0 : 1 },
+                creditsConsumed: { increment: creditsCost },
+              },
+            })
+          } else {
+            throw error
+          }
+        }
+      }
+
       const current = await tx.toolDailyStat.findUnique({
-        where: { date_toolSlug: { date: today, toolSlug } },
+        where: uniqueWhere,
         select: { id: true, useCount: true, avgProcessMs: true },
       })
       if (current) {
