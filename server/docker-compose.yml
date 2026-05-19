@@ -19,6 +19,42 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  worker:
+    build: .
+    command: ["node", "dist/workers/process-worker.js"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=mysql://filetools:${MYSQL_PASSWORD}@mysql:3306/filetools
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+    volumes:
+      - ${STORAGE_ROOT:-/opt/filetools/storage}:${STORAGE_ROOT:-/opt/filetools/storage}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cleanup:
+    build: .
+    command: ["sh", "-c", "while true; do node dist/workers/cleanup.js; sleep 1800; done"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=mysql://filetools:${MYSQL_PASSWORD}@mysql:3306/filetools
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env
+    volumes:
+      - ${STORAGE_ROOT:-/opt/filetools/storage}:${STORAGE_ROOT:-/opt/filetools/storage}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   mysql:
     image: mysql:8.0
     environment:
