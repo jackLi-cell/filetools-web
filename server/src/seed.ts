@@ -79,6 +79,14 @@ const toolSeeds = [
   { toolSlug: "pdf-encrypt", name: "PDF 加密", category: "pdf", isFree: false, creditsCost: 2, dailyFreeAnonymous: 0, dailyFreeRegistered: 0, maxFileSizeMb: 50, priority: 80, description: "为 PDF 设置密码保护" },
   { toolSlug: "pdf-decrypt", name: "PDF 解密", category: "pdf", isFree: false, creditsCost: 2, dailyFreeAnonymous: 0, dailyFreeRegistered: 0, maxFileSizeMb: 50, priority: 79, description: "移除 PDF 密码保护" },
   { toolSlug: "pdf-ocr", name: "PDF OCR 文字识别", category: "pdf", isFree: false, creditsCost: 5, dailyFreeAnonymous: 0, dailyFreeRegistered: 0, maxFileSizeMb: 30, priority: 75, description: "识别扫描版 PDF 中的文字" },
+  // 文档转换
+  { toolSlug: "word-to-pdf", name: "Word 转 PDF", category: "convert", isFree: false, creditsCost: 3, dailyFreeAnonymous: 0, dailyFreeRegistered: 2, maxFileSizeMb: 50, priority: 100, description: "将 Word 文档转换为 PDF 格式" },
+  { toolSlug: "pdf-to-word", name: "PDF 转 Word", category: "convert", isFree: false, creditsCost: 5, dailyFreeAnonymous: 0, dailyFreeRegistered: 1, maxFileSizeMb: 50, priority: 99, description: "将 PDF 转换为可编辑的 Word 文档，复杂排版可能存在差异" },
+  { toolSlug: "excel-to-pdf", name: "Excel 转 PDF", category: "convert", isFree: false, creditsCost: 3, dailyFreeAnonymous: 0, dailyFreeRegistered: 2, maxFileSizeMb: 50, priority: 98, description: "将 Excel 表格转换为 PDF 格式" },
+  { toolSlug: "excel-to-image", name: "Excel 转图片", category: "convert", isFree: false, creditsCost: 4, dailyFreeAnonymous: 0, dailyFreeRegistered: 1, maxFileSizeMb: 50, priority: 97, description: "将 Excel 表格转换为图片，多个页面自动打包 ZIP" },
+  { toolSlug: "ppt-to-pdf", name: "PPT 转 PDF", category: "convert", isFree: false, creditsCost: 3, dailyFreeAnonymous: 0, dailyFreeRegistered: 2, maxFileSizeMb: 100, priority: 96, description: "将 PPT 演示文稿转换为 PDF" },
+  { toolSlug: "ppt-to-image", name: "PPT 转图片", category: "convert", isFree: false, creditsCost: 5, dailyFreeAnonymous: 0, dailyFreeRegistered: 1, maxFileSizeMb: 100, priority: 95, description: "将 PPT 每页转换为图片，多个页面自动打包 ZIP" },
+  { toolSlug: "word-to-image", name: "Word 转图片", category: "convert", isFree: false, creditsCost: 4, dailyFreeAnonymous: 0, dailyFreeRegistered: 1, maxFileSizeMb: 50, priority: 94, description: "将 Word 文档每页转换为图片，多个页面自动打包 ZIP" },
   // 开发者工具
   { toolSlug: "json-formatter", name: "JSON 格式化", category: "dev", isFree: true, creditsCost: 0, dailyFreeAnonymous: 0, dailyFreeRegistered: 0, maxFileSizeMb: 1, priority: 100, description: "格式化、压缩、校验 JSON 数据" },
   { toolSlug: "regex-tester", name: "正则表达式测试", category: "dev", isFree: true, creditsCost: 0, dailyFreeAnonymous: 0, dailyFreeRegistered: 0, maxFileSizeMb: 1, priority: 99, description: "实时匹配测试和分组高亮" },

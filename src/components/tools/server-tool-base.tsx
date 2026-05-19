@@ -11,6 +11,7 @@ interface ServerToolProps {
   toolSlug: string
   accept?: string
   maxSizeMb?: number
+  maxFiles?: number
   creditsCost?: number
   isLimitedFree?: boolean
   paramsSchema?: { name: string; label: string; type: "number" | "text" | "select"; default?: string | number; min?: number; max?: number; options?: { value: string; label: string }[] }[]
@@ -24,9 +25,9 @@ interface TaskResult {
   outputFileName?: string
 }
 
-export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, creditsCost = 0, isLimitedFree = false, paramsSchema = [], acceptHint }: ServerToolProps) {
+export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFiles = 1, creditsCost = 0, isLimitedFree = false, paramsSchema = [], acceptHint }: ServerToolProps) {
   const { user, refresh } = useAuth()
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [task, setTask] = useState<TaskResult | null>(null)
@@ -74,16 +75,27 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
     }
   }, [creditsCost, isLimitedFree, toolSlug])
 
-  const handleFile = useCallback((f: File | null) => {
-    if (!f) return
-    if (f.size > maxSizeMb * 1024 * 1024) {
-      setError(`文件超过 ${maxSizeMb}MB 限制`)
+  const handleFiles = useCallback((incoming: File[]) => {
+    const selected = incoming.filter(Boolean).slice(0, maxFiles)
+    if (selected.length === 0) return
+    if (incoming.length > maxFiles) {
+      setError(`最多只能上传 ${maxFiles} 个文件`)
       return
     }
-    setFile(f)
+    const oversize = selected.find((f) => f.size > maxSizeMb * 1024 * 1024)
+    if (oversize) {
+      setError(`${oversize.name} 超过 ${maxSizeMb}MB 限制`)
+      return
+    }
+    setFiles(selected)
     setTask(null)
     setError("")
-  }, [maxSizeMb])
+  }, [maxFiles, maxSizeMb])
+
+  const handleFile = useCallback((f: File | null) => {
+    if (!f) return
+    handleFiles([f])
+  }, [handleFiles])
 
   // AI prefill: when navigated from灵猫助手 with `?prefill=1`, pull the previously
   // uploaded attachment back into this tool and apply suggested params.
@@ -117,37 +129,47 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
   }, [toolSlug])
 
   const submit = async () => {
-    if (!file) return
+    if (files.length === 0) return
     setUploading(true)
     setError("")
     try {
-      const uploadRes = await api.post<{ uploadUrl: string; fileKey: string }>("/api/process/upload", {
-        fileName: file.name,
-        contentType: file.type || "application/octet-stream",
-        fileSize: file.size,
-        toolSlug,
-      })
-      if (uploadRes.code !== 0 || !uploadRes.data) {
-        setError(uploadRes.message || "上传失败")
-        setUploading(false)
-        return
-      }
+      const uploadedFiles: { fileKey: string; fileName: string; fileSize: number }[] = []
+      for (const current of files) {
+        const uploadRes = await api.post<{ uploadUrl: string; fileKey: string }>("/api/process/upload", {
+          fileName: current.name,
+          contentType: current.type || "application/octet-stream",
+          fileSize: current.size,
+          toolSlug,
+        })
+        if (uploadRes.code !== 0 || !uploadRes.data) {
+          setError(uploadRes.message || "上传失败")
+          setUploading(false)
+          return
+        }
 
-      const fileUploadRes = await fetch(uploadRes.data.uploadUrl, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-      })
-      if (!fileUploadRes.ok) {
-        setError("文件上传失败")
-        setUploading(false)
-        return
+        const fileUploadRes = await fetch(uploadRes.data.uploadUrl, {
+          method: "PUT",
+          body: current,
+          headers: { "Content-Type": current.type || "application/octet-stream" },
+        })
+        if (!fileUploadRes.ok) {
+          setError(`${current.name} 上传失败`)
+          setUploading(false)
+          return
+        }
+
+        uploadedFiles.push({
+          fileKey: uploadRes.data.fileKey,
+          fileName: current.name,
+          fileSize: current.size,
+        })
       }
 
       const taskRes = await api.post<{ taskId: string }>(`/api/process/${toolSlug}`, {
-        fileKey: uploadRes.data.fileKey,
-        fileName: file.name,
-        fileSize: file.size,
+        fileKey: uploadedFiles[0].fileKey,
+        fileName: uploadedFiles[0].fileName,
+        fileSize: uploadedFiles.reduce((sum, item) => sum + item.fileSize, 0),
+        files: uploadedFiles,
         params,
       })
 
@@ -203,14 +225,25 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${dragOver ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]) }}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(Array.from(e.dataTransfer.files)) }}
         onClick={() => document.getElementById(`server-tool-${toolSlug}`)?.click()}
       >
-        <input id={`server-tool-${toolSlug}`} type="file" accept={accept} className="hidden" onChange={(e) => handleFile(e.target.files?.[0] || null)} />
-        {file ? (
+        <input
+          id={`server-tool-${toolSlug}`}
+          type="file"
+          accept={accept}
+          multiple={maxFiles > 1}
+          className="hidden"
+          onChange={(e) => handleFiles(Array.from(e.target.files || []))}
+        />
+        {files.length > 0 ? (
           <div className="space-y-1">
-            <p className="text-sm text-gray-900">{file.name}</p>
-            <p className="text-xs text-gray-500">{formatSize(file.size)}</p>
+            {files.map((file) => (
+              <p key={`${file.name}-${file.size}-${file.lastModified}`} className="text-sm text-gray-900">
+                {file.name} <span className="text-xs text-gray-500">({formatSize(file.size)})</span>
+              </p>
+            ))}
+            {maxFiles > 1 && <p className="text-xs text-gray-500">已选择 {files.length} / {maxFiles} 个文件</p>}
           </div>
         ) : (
           <>
@@ -221,7 +254,7 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
         )}
       </div>
 
-      {file && paramsSchema.length > 0 && (
+      {files.length > 0 && paramsSchema.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-gray-50 rounded-lg">
           {paramsSchema.map(p => (
             <div key={p.name}>
@@ -251,7 +284,7 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, credi
 
       {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">❌ {error}</div>}
 
-      {file && !task && (
+      {files.length > 0 && !task && (
         <>
           {needLogin && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 该工具需要登录后使用</div>}
           {insufficientCredits && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 积分不足（需要 {effectiveCreditsCost} 积分，当前 {user!.credits}）</div>}

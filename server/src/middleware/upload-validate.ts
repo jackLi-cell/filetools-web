@@ -16,10 +16,21 @@ const BLOCKED_EXTENSIONS = new Set([
   ".com", ".vbs", ".js", ".wsh", ".wsf", ".scr", ".pif",
 ])
 
+const ALLOWED_EXTENSIONS = new Set([
+  ".pdf",
+  ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg",
+  ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+  ".txt", ".csv", ".md", ".markdown",
+  ".mp4", ".webm", ".mov", ".avi",
+  ".mp3", ".wav", ".ogg", ".flac", ".aac",
+])
+
 export function validateFileParams(fileName: string, mimeType: string, fileSize: number, maxSizeMb: number): string | null {
   const ext = "." + (fileName.split(".").pop()?.toLowerCase() || "")
   if (BLOCKED_EXTENSIONS.has(ext)) return "不支持的文件类型"
-  if (!ALLOWED_MIME_TYPES.has(mimeType)) return `不支持的文件格式：${mimeType}`
+  if (!ALLOWED_MIME_TYPES.has(mimeType) && !(mimeType === "application/octet-stream" && ALLOWED_EXTENSIONS.has(ext))) {
+    return `不支持的文件格式：${mimeType}`
+  }
   if (fileSize > maxSizeMb * 1024 * 1024) return `文件大小超过限制（最大 ${maxSizeMb}MB）`
   if (fileName.includes("..") || fileName.includes("/") || fileName.includes("\\")) return "文件名包含非法字符"
   return null

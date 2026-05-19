@@ -122,8 +122,15 @@ const processSchema = z.object({
   fileKey: z.string().min(1),
   fileName: z.string().min(1).max(255),
   fileSize: z.number().positive(),
+  files: z.array(z.object({
+    fileKey: z.string().min(1),
+    fileName: z.string().min(1).max(255),
+    fileSize: z.number().positive(),
+  })).max(20).optional(),
   params: z.record(z.unknown()).optional(),
 })
+
+const MULTI_FILE_TOOLS = new Set(["pdf-merge", "image-to-pdf"])
 
 router.post("/:toolSlug", async (req: Request, res: Response) => {
   const toolSlug = req.params.toolSlug as string
@@ -138,21 +145,45 @@ router.post("/:toolSlug", async (req: Request, res: Response) => {
     res.status(404).json({ code: 404, message: "工具不存在" })
     return
   }
-  const inputFileName = sanitizeFileName(parsed.data.fileName)
-  if (!fileKeyBelongsToTool(parsed.data.fileKey, toolSlug)) {
-    res.status(400).json({ code: 400, message: "文件上传凭证与工具不匹配" })
+  const rawFiles = parsed.data.files?.length ? parsed.data.files : [{
+    fileKey: parsed.data.fileKey,
+    fileName: parsed.data.fileName,
+    fileSize: parsed.data.fileSize,
+  }]
+
+  if (rawFiles.length > 1 && !MULTI_FILE_TOOLS.has(toolSlug)) {
+    res.status(400).json({ code: 400, message: "该工具暂不支持多文件上传" })
     return
   }
-  const fileValidationError = validateFileParams(
-    inputFileName,
-    "application/octet-stream",
-    parsed.data.fileSize,
-    tool.maxFileSizeMb,
-  )
-  if (fileValidationError && !fileValidationError.startsWith("不支持的文件格式")) {
-    res.status(400).json({ code: 400, message: fileValidationError })
+  if (toolSlug === "pdf-merge" && rawFiles.length < 2) {
+    res.status(400).json({ code: 400, message: "PDF 合并至少需要 2 个 PDF 文件" })
     return
   }
+
+  const inputFiles = rawFiles.map((file) => ({
+    fileKey: file.fileKey,
+    fileName: sanitizeFileName(file.fileName),
+    fileSize: file.fileSize,
+  }))
+  let totalSize = 0
+  for (const inputFile of inputFiles) {
+    if (!fileKeyBelongsToTool(inputFile.fileKey, toolSlug)) {
+      res.status(400).json({ code: 400, message: "文件上传凭证与工具不匹配" })
+      return
+    }
+    const fileValidationError = validateFileParams(
+      inputFile.fileName,
+      "application/octet-stream",
+      inputFile.fileSize,
+      tool.maxFileSizeMb,
+    )
+    if (fileValidationError && !fileValidationError.startsWith("不支持的文件格式")) {
+      res.status(400).json({ code: 400, message: fileValidationError })
+      return
+    }
+    totalSize += inputFile.fileSize
+  }
+  const inputFileName = inputFiles.length === 1 ? inputFiles[0].fileName : `${inputFiles.length} files`
 
   const ip = (req.ip || "unknown") as string
   const categoryPaymentSetting = await prisma.categoryPaymentSetting.findUnique({
@@ -175,15 +206,20 @@ router.post("/:toolSlug", async (req: Request, res: Response) => {
   const taskId = randomUUID()
   const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000)
 
+  const taskParams = {
+    ...((parsed.data.params as Record<string, unknown> | undefined) || {}),
+    __inputFiles: inputFiles.map((file) => ({ fileKey: file.fileKey, fileName: file.fileName })),
+  }
+
   await prisma.processTask.create({
     data: {
       id: taskId,
       toolSlug,
       status: "pending",
-      inputFileKey: parsed.data.fileKey,
+      inputFileKey: inputFiles[0].fileKey,
       inputFileName,
-      inputFileSize: BigInt(parsed.data.fileSize),
-      params: parsed.data.params as any || undefined,
+      inputFileSize: BigInt(totalSize),
+      params: taskParams as any,
       creditsCost: effectiveCreditsCost,
       ipAddress: ip,
       expiresAt,
@@ -193,8 +229,9 @@ router.post("/:toolSlug", async (req: Request, res: Response) => {
   await processQueue.add(toolSlug, {
     taskId,
     toolSlug,
-    inputFileKey: parsed.data.fileKey,
+    inputFileKey: inputFiles[0].fileKey,
     inputFileName,
+    inputFiles: inputFiles.map((file) => ({ fileKey: file.fileKey, fileName: file.fileName })),
     params: parsed.data.params || {},
   })
 

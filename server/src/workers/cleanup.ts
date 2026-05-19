@@ -13,7 +13,7 @@ export async function cleanExpiredFiles() {
       status: "completed",
       outputFileKey: { not: null },
     },
-    select: { id: true, inputFileKey: true, outputFileKey: true },
+    select: { id: true, inputFileKey: true, outputFileKey: true, params: true },
     take: 100,
   })
 
@@ -21,7 +21,11 @@ export async function cleanExpiredFiles() {
   for (const task of expiredTasks) {
     try {
       if (task.outputFileKey) await deleteFile(task.outputFileKey)
-      if (task.inputFileKey) await deleteFile(task.inputFileKey)
+      const extraInputKeys = Array.isArray((task.params as any)?.__inputFiles)
+        ? ((task.params as any).__inputFiles as Array<{ fileKey?: string }>).map((file) => file.fileKey).filter(Boolean)
+        : []
+      const inputKeys = Array.from(new Set([task.inputFileKey, ...extraInputKeys].filter(Boolean) as string[]))
+      for (const key of inputKeys) await deleteFile(key)
       await prisma.processTask.update({
         where: { id: task.id },
         data: { status: "expired", outputFileKey: null, inputFileKey: null },

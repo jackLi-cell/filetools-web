@@ -2,7 +2,7 @@ import { Job } from "bullmq"
 import { PrismaClient } from "@prisma/client"
 import { execFile } from "child_process"
 import { promisify } from "util"
-import { mkdtemp, rm, readdir, readFile, writeFile, stat } from "fs/promises"
+import { mkdtemp, rm, readFile, writeFile } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
 import { downloadFileFromStorage, uploadFileToStorage } from "../config/storage.js"
@@ -13,6 +13,7 @@ import { processPdfRotate, processPdfEncrypt, processPdfDecrypt, processPdfExtra
 import { processWordToPdf, processPdfToWord, processExcelToPdf, processExcelToImage, processPptToPdf, processPptToImage, processWordToImage } from "./office-worker.js"
 import { processAudioSpeed, processAudioDenoise, processVideoClip } from "./media-worker.js"
 import { processCsvToExcel, processExcelToCsv, processBatchQrcode, processSignaturePdf, processMarkdownToPdf, processHtmlToPdf, processPdfAddPageNumbers } from "./util-worker.js"
+import { baseNameWithoutExt, createZipArchive, getInputFiles, renderPdfPagesToImages, type JobInputFile } from "./worker-utils.js"
 
 const execFileAsync = promisify(execFile)
 const prisma = new PrismaClient()
@@ -22,6 +23,7 @@ interface ProcessJobData {
   toolSlug: string
   inputFileKey: string
   inputFileName: string
+  inputFiles?: JobInputFile[]
   params: Record<string, unknown>
 }
 
@@ -52,24 +54,30 @@ async function markFailed(taskId: string, message: string) {
 }
 
 async function processPdfToImage(job: Job<ProcessJobData>) {
-  const { taskId, inputFileKey, inputFileName } = job.data
+  const { taskId, inputFileKey, inputFileName, params } = job.data
   const workDir = await mkdtemp(join(tmpdir(), "ft-"))
   try {
     await markProcessing(taskId)
     const inputPath = join(workDir, inputFileName)
     await downloadFromStorage(inputFileKey, inputPath)
 
-    const outputFileName = inputFileName.replace(/\.pdf$/i, "_page1.png")
-    const outputPath = join(workDir, outputFileName)
-
-    await execFileAsync("gs", [
-      "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", "-r150",
-      "-dFirstPage=1", "-dLastPage=1",
-      `-sOutputFile=${outputPath}`, inputPath,
-    ], { timeout: 60000 })
+    const images = await renderPdfPagesToImages(inputPath, workDir, baseNameWithoutExt(inputFileName), params)
+    let outputFileName: string
+    let outputPath: string
+    let contentType: string
+    if (images.length === 1) {
+      outputFileName = images[0].name
+      outputPath = images[0].path
+      contentType = outputFileName.endsWith(".jpg") ? "image/jpeg" : "image/png"
+    } else {
+      outputFileName = `${baseNameWithoutExt(inputFileName)}_images.zip`
+      outputPath = join(workDir, outputFileName)
+      await createZipArchive(outputPath, images)
+      contentType = "application/zip"
+    }
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToStorage(outputPath, outputKey, "image/png")
+    const outputSize = await uploadToStorage(outputPath, outputKey, contentType)
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 转图片失败")
@@ -87,19 +95,47 @@ async function processPdfSplit(job: Job<ProcessJobData>) {
     const inputPath = join(workDir, inputFileName)
     await downloadFromStorage(inputFileKey, inputPath)
 
-    const startPage = Number(params.startPage) || 1
-    const endPage = Number(params.endPage) || 1
-    const outputFileName = `split_p${startPage}-p${endPage}.pdf`
-    const outputPath = join(workDir, outputFileName)
+    const { PDFDocument } = await import("pdf-lib")
+    const sourceBytes = await readFile(inputPath)
+    const sourceDoc = await PDFDocument.load(sourceBytes)
+    const pageCount = sourceDoc.getPageCount()
+    if (pageCount < 1) throw new Error("PDF 文件没有可拆分的页面")
 
-    await execFileAsync("gs", [
-      "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
-      `-dFirstPage=${startPage}`, `-dLastPage=${endPage}`,
-      `-sOutputFile=${outputPath}`, inputPath,
-    ], { timeout: 60000 })
+    const splitMode = String(params.splitMode || "range")
+
+    let outputFileName: string
+    let outputPath: string
+    if (splitMode === "each") {
+      const entries: Array<{ path: string; name: string }> = []
+      for (let i = 0; i < pageCount; i++) {
+        const doc = await PDFDocument.create()
+        const [page] = await doc.copyPages(sourceDoc, [i])
+        doc.addPage(page)
+        const name = `${baseNameWithoutExt(inputFileName)}_page_${String(i + 1).padStart(3, "0")}.pdf`
+        const path = join(workDir, name)
+        await writeFile(path, await doc.save())
+        entries.push({ path, name })
+      }
+      outputFileName = `${baseNameWithoutExt(inputFileName)}_split_pages.zip`
+      outputPath = join(workDir, outputFileName)
+      await createZipArchive(outputPath, entries)
+    } else {
+      const startPage = Math.max(1, Number(params.startPage) || 1)
+      const endPage = Math.min(pageCount, Number(params.endPage) || startPage)
+      if (startPage > endPage) throw new Error("起始页不能大于结束页")
+
+      const indices = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage - 1 + i)
+      const outputDoc = await PDFDocument.create()
+      const pages = await outputDoc.copyPages(sourceDoc, indices)
+      pages.forEach((page) => outputDoc.addPage(page))
+
+      outputFileName = `${baseNameWithoutExt(inputFileName)}_p${startPage}-p${endPage}.pdf`
+      outputPath = join(workDir, outputFileName)
+      await writeFile(outputPath, await outputDoc.save())
+    }
 
     const outputKey = `results/${taskId}/${outputFileName}`
-    const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
+    const outputSize = await uploadToStorage(outputPath, outputKey, outputFileName.endsWith(".zip") ? "application/zip" : "application/pdf")
     await markCompleted(taskId, outputKey, outputFileName, outputSize)
   } catch (error: unknown) {
     await markFailed(taskId, error instanceof Error ? error.message : "PDF 拆分失败")
@@ -110,7 +146,7 @@ async function processPdfSplit(job: Job<ProcessJobData>) {
 }
 
 async function processPdfCompress(job: Job<ProcessJobData>) {
-  const { taskId, inputFileKey, inputFileName } = job.data
+  const { taskId, inputFileKey, inputFileName, params } = job.data
   const workDir = await mkdtemp(join(tmpdir(), "ft-"))
   try {
     await markProcessing(taskId)
@@ -119,13 +155,16 @@ async function processPdfCompress(job: Job<ProcessJobData>) {
 
     const outputFileName = `compressed_${inputFileName}`
     const outputPath = join(workDir, outputFileName)
+    const quality = String(params.quality || "ebook")
+    const allowedQualities = new Set(["screen", "ebook", "printer", "prepress", "default"])
+    const pdfSettings = allowedQualities.has(quality) ? quality : "ebook"
 
     await execFileAsync("gs", [
       "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
       "-dCompatibilityLevel=1.4",
-      "-dPDFSETTINGS=/ebook",
+      `-dPDFSETTINGS=/${pdfSettings}`,
       `-sOutputFile=${outputPath}`, inputPath,
-    ], { timeout: 60000 })
+    ], { timeout: 120000 })
 
     const outputKey = `results/${taskId}/${outputFileName}`
     const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
@@ -139,20 +178,29 @@ async function processPdfCompress(job: Job<ProcessJobData>) {
 }
 
 async function processPdfMerge(job: Job<ProcessJobData>) {
-  const { taskId, inputFileKey, inputFileName } = job.data
+  const { taskId } = job.data
   const workDir = await mkdtemp(join(tmpdir(), "ft-"))
   try {
     await markProcessing(taskId)
-    const inputPath = join(workDir, inputFileName)
-    await downloadFromStorage(inputFileKey, inputPath)
+    const inputs = getInputFiles(job.data)
+    if (inputs.length < 2) throw new Error("PDF 合并至少需要上传 2 个 PDF 文件")
 
     const outputFileName = "merged.pdf"
     const outputPath = join(workDir, outputFileName)
+    const { PDFDocument } = await import("pdf-lib")
+    const outputDoc = await PDFDocument.create()
 
-    await execFileAsync("gs", [
-      "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
-      `-sOutputFile=${outputPath}`, inputPath,
-    ], { timeout: 60000 })
+    for (let i = 0; i < inputs.length; i++) {
+      const input = inputs[i]
+      const inputPath = join(workDir, `${String(i + 1).padStart(2, "0")}_${input.fileName}`)
+      await downloadFromStorage(input.fileKey, inputPath)
+      const sourceDoc = await PDFDocument.load(await readFile(inputPath))
+      const pages = await outputDoc.copyPages(sourceDoc, sourceDoc.getPageIndices())
+      pages.forEach((page) => outputDoc.addPage(page))
+    }
+
+    if (outputDoc.getPageCount() === 0) throw new Error("PDF 文件没有可合并的页面")
+    await writeFile(outputPath, await outputDoc.save())
 
     const outputKey = `results/${taskId}/${outputFileName}`
     const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")
@@ -166,20 +214,42 @@ async function processPdfMerge(job: Job<ProcessJobData>) {
 }
 
 async function processImageToPdf(job: Job<ProcessJobData>) {
-  const { taskId, inputFileKey, inputFileName } = job.data
+  const { taskId } = job.data
   const workDir = await mkdtemp(join(tmpdir(), "ft-"))
   try {
     await markProcessing(taskId)
-    const inputPath = join(workDir, inputFileName)
-    await downloadFromStorage(inputFileKey, inputPath)
+    const inputs = getInputFiles(job.data)
+    const { PDFDocument } = await import("pdf-lib")
+    const sharp = (await import("sharp")).default
+    const outputDoc = await PDFDocument.create()
 
-    const outputFileName = inputFileName.replace(/\.\w+$/, ".pdf")
+    for (let i = 0; i < inputs.length; i++) {
+      const input = inputs[i]
+      const inputPath = join(workDir, `${String(i + 1).padStart(2, "0")}_${input.fileName}`)
+      await downloadFromStorage(input.fileKey, inputPath)
+
+      const image = sharp(inputPath, { pages: 1 }).rotate()
+      const metadata = await image.metadata()
+      const format = metadata.format === "jpeg" ? "jpeg" : "png"
+      const bytes = format === "jpeg"
+        ? await image.jpeg({ quality: 95 }).toBuffer()
+        : await image.png().toBuffer()
+      const embedded = format === "jpeg"
+        ? await outputDoc.embedJpg(bytes)
+        : await outputDoc.embedPng(bytes)
+      const width = Math.max(1, metadata.width || embedded.width)
+      const height = Math.max(1, metadata.height || embedded.height)
+      const page = outputDoc.addPage([width, height])
+      page.drawImage(embedded, { x: 0, y: 0, width, height })
+    }
+
+    if (outputDoc.getPageCount() === 0) throw new Error("请至少上传 1 张图片")
+
+    const outputFileName = inputs.length === 1
+      ? `${baseNameWithoutExt(inputs[0].fileName)}.pdf`
+      : "images.pdf"
     const outputPath = join(workDir, outputFileName)
-
-    await execFileAsync("gs", [
-      "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
-      `-sOutputFile=${outputPath}`, inputPath,
-    ], { timeout: 60000 })
+    await writeFile(outputPath, await outputDoc.save())
 
     const outputKey = `results/${taskId}/${outputFileName}`
     const outputSize = await uploadToStorage(outputPath, outputKey, "application/pdf")

@@ -3,15 +3,33 @@
 import { ServerToolBase } from "./server-tool-base"
 
 export function PdfToImageTool() {
-  return <ServerToolBase toolSlug="pdf-to-image" accept="application/pdf" maxSizeMb={30} creditsCost={1} isLimitedFree acceptHint="支持 PDF 文件，最大 30MB" />
+  return <ServerToolBase
+    toolSlug="pdf-to-image"
+    accept="application/pdf"
+    maxSizeMb={30}
+    creditsCost={1}
+    isLimitedFree
+    acceptHint="支持 PDF 文件，自动导出全部页面"
+    paramsSchema={[
+      { name: "format", label: "图片格式", type: "select", default: "png", options: [
+        { value: "png", label: "PNG" },
+        { value: "jpg", label: "JPG" },
+      ]},
+      { name: "dpi", label: "清晰度 DPI", type: "select", default: "150", options: [
+        { value: "150", label: "150 DPI（推荐）" },
+        { value: "200", label: "200 DPI" },
+        { value: "300", label: "300 DPI（更清晰）" },
+      ]},
+    ]}
+  />
 }
 
 export function ImageToPdfTool() {
-  return <ServerToolBase toolSlug="image-to-pdf" accept="image/*" maxSizeMb={30} creditsCost={1} isLimitedFree acceptHint="支持图片格式" />
+  return <ServerToolBase toolSlug="image-to-pdf" accept="image/*" maxSizeMb={30} maxFiles={20} creditsCost={1} isLimitedFree acceptHint="支持 1-20 张图片，每张最大 30MB" />
 }
 
 export function PdfMergeTool() {
-  return <ServerToolBase toolSlug="pdf-merge" accept="application/pdf" maxSizeMb={50} creditsCost={1} isLimitedFree acceptHint="支持 PDF 文件" />
+  return <ServerToolBase toolSlug="pdf-merge" accept="application/pdf" maxSizeMb={50} maxFiles={20} creditsCost={1} isLimitedFree acceptHint="支持 2-20 个 PDF 文件，每个最大 50MB" />
 }
 
 export function PdfSplitTool() {
@@ -22,6 +40,10 @@ export function PdfSplitTool() {
     creditsCost={1}
     isLimitedFree
     paramsSchema={[
+      { name: "splitMode", label: "拆分方式", type: "select", default: "range", options: [
+        { value: "range", label: "提取页码范围为一个 PDF" },
+        { value: "each", label: "每页拆成独立 PDF（ZIP 下载）" },
+      ]},
       { name: "startPage", label: "起始页", type: "number", default: 1, min: 1 },
       { name: "endPage", label: "结束页", type: "number", default: 1, min: 1 },
     ]}
@@ -254,6 +276,17 @@ export function ExcelToImageTool() {
     maxSizeMb={50}
     creditsCost={4}
     acceptHint="支持 .xls / .xlsx 文件，转为 PNG 图片"
+    paramsSchema={[
+      { name: "format", label: "图片格式", type: "select", default: "png", options: [
+        { value: "png", label: "PNG" },
+        { value: "jpg", label: "JPG" },
+      ]},
+      { name: "dpi", label: "清晰度 DPI", type: "select", default: "150", options: [
+        { value: "150", label: "150 DPI（推荐）" },
+        { value: "200", label: "200 DPI" },
+        { value: "300", label: "300 DPI（更清晰）" },
+      ]},
+    ]}
   />
 }
 
@@ -274,6 +307,17 @@ export function PptToImageTool() {
     maxSizeMb={100}
     creditsCost={5}
     acceptHint="支持 .ppt / .pptx 文件，转为 PNG 图片"
+    paramsSchema={[
+      { name: "format", label: "图片格式", type: "select", default: "png", options: [
+        { value: "png", label: "PNG" },
+        { value: "jpg", label: "JPG" },
+      ]},
+      { name: "dpi", label: "清晰度 DPI", type: "select", default: "150", options: [
+        { value: "150", label: "150 DPI（推荐）" },
+        { value: "200", label: "200 DPI" },
+        { value: "300", label: "300 DPI（更清晰）" },
+      ]},
+    ]}
   />
 }
 
@@ -284,5 +328,16 @@ export function WordToImageTool() {
     maxSizeMb={50}
     creditsCost={4}
     acceptHint="支持 .doc / .docx 文件，转为 PNG 图片"
+    paramsSchema={[
+      { name: "format", label: "图片格式", type: "select", default: "png", options: [
+        { value: "png", label: "PNG" },
+        { value: "jpg", label: "JPG" },
+      ]},
+      { name: "dpi", label: "清晰度 DPI", type: "select", default: "150", options: [
+        { value: "150", label: "150 DPI（推荐）" },
+        { value: "200", label: "200 DPI" },
+        { value: "300", label: "300 DPI（更清晰）" },
+      ]},
+    ]}
   />
 }
