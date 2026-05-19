@@ -250,7 +250,13 @@ router.get("/status/:taskId", async (req: Request, res: Response) => {
     return
   }
 
-  res.json({ code: 0, data: task })
+  res.json({
+    code: 0,
+    data: {
+      ...task,
+      outputFileSize: task.outputFileSize == null ? null : Number(task.outputFileSize),
+    },
+  })
 })
 
 router.get("/download/:taskId", async (req: Request, res: Response) => {
