@@ -2,9 +2,13 @@ import Link from "next/link"
 import { Metadata } from "next"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { categories, tools } from "@/config/tools"
+import { categories } from "@/config/tools"
 import { AiHero } from "@/components/ai/ai-hero"
 import { siteConfig } from "@/config/site"
+import { fetchTools } from "@/lib/tools-service"
+
+export const dynamic = "force-dynamic"
+export const runtime = "edge"
 
 export const metadata: Metadata = {
   alternates: {
@@ -12,9 +16,8 @@ export const metadata: Metadata = {
   },
 }
 
-const popularTools = tools.filter(t => t.version === "v0.1").slice(0, 8)
-
-export default function HomePage() {
+export default async function HomePage() {
+  const popularTools = (await fetchTools()).slice(0, 8)
   return (
     <div className="home-page flex flex-col">
       <section className="home-ai-shell border-b bg-gradient-to-b from-blue-50/50 to-white py-12 md:py-20">

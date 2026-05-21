@@ -2,9 +2,12 @@ import Link from "next/link"
 import { Metadata } from "next"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { categories, tools } from "@/config/tools"
-import { applyCategoryPaymentSettings } from "@/lib/payment-settings"
+import { categories } from "@/config/tools"
+import { fetchTools } from "@/lib/tools-service"
 import { siteConfig } from "@/config/site"
+
+export const dynamic = "force-dynamic"
+export const runtime = "edge"
 
 export const metadata: Metadata = {
   title: "全部工具 - 50+ 在线文件处理工具",
@@ -14,8 +17,8 @@ export const metadata: Metadata = {
   },
 }
 
-export default function AllToolsPage() {
-  const v01Tools = applyCategoryPaymentSettings(tools.filter(t => t.version === "v0.1"))
+export default async function AllToolsPage() {
+  const v01Tools = await fetchTools()
 
   return (
     <div className="container mx-auto px-4 py-8 md:py-12 max-w-6xl">

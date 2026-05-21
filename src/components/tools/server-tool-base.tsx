@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
@@ -13,7 +14,6 @@ interface ServerToolProps {
   maxSizeMb?: number
   maxFiles?: number
   creditsCost?: number
-  isLimitedFree?: boolean
   paramsSchema?: { name: string; label: string; type: "number" | "text" | "select"; default?: string | number; min?: number; max?: number; options?: { value: string; label: string }[] }[]
   acceptHint?: string
 }
@@ -25,7 +25,8 @@ interface TaskResult {
   outputFileName?: string
 }
 
-export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFiles = 1, creditsCost = 0, isLimitedFree = false, paramsSchema = [], acceptHint }: ServerToolProps) {
+export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFiles = 1, creditsCost = 0, paramsSchema = [], acceptHint }: ServerToolProps) {
+  const router = useRouter()
   const { user, refresh } = useAuth()
   const [files, setFiles] = useState<File[]>([])
   const [dragOver, setDragOver] = useState(false)
@@ -33,7 +34,6 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
   const [task, setTask] = useState<TaskResult | null>(null)
   const [error, setError] = useState("")
   const [effectiveCreditsCost, setEffectiveCreditsCost] = useState(0)
-  const [effectiveLimitedFree, setEffectiveLimitedFree] = useState(false)
   const [params, setParams] = useState<Record<string, unknown>>(() => {
     const defaults: Record<string, unknown> = {}
     paramsSchema.forEach(p => { if (p.default !== undefined) defaults[p.name] = p.default })
@@ -59,11 +59,9 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
           : 0
 
         setEffectiveCreditsCost(nextCreditsCost)
-        setEffectiveLimitedFree(paidEnabled && nextCreditsCost > 0 ? isLimitedFree : false)
       } catch {
         if (!cancelled) {
-          setEffectiveCreditsCost(0)
-          setEffectiveLimitedFree(false)
+          setEffectiveCreditsCost(creditsCost)
         }
       }
     }
@@ -73,7 +71,7 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
     return () => {
       cancelled = true
     }
-  }, [creditsCost, isLimitedFree, toolSlug])
+  }, [creditsCost, toolSlug])
 
   const handleFiles = useCallback((incoming: File[]) => {
     const selected = incoming.filter(Boolean).slice(0, maxFiles)
@@ -130,6 +128,10 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
 
   const submit = async () => {
     if (files.length === 0) return
+    if (needLogin) {
+      router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`)
+      return
+    }
     setUploading(true)
     setError("")
     try {
@@ -174,6 +176,11 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
       })
 
       if (taskRes.code !== 0 || !taskRes.data) {
+        if (taskRes.code === 401) {
+          router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`)
+          setUploading(false)
+          return
+        }
         setError(taskRes.message || "任务提交失败")
         setUploading(false)
         return
@@ -216,7 +223,7 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
 
   const formatSize = (bytes: number) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`
 
-  const needLogin = !effectiveLimitedFree && effectiveCreditsCost > 0 && !user
+  const needLogin = effectiveCreditsCost > 0 && !user
   const insufficientCredits = user && effectiveCreditsCost > 0 && user.credits < effectiveCreditsCost
 
   return (
@@ -288,8 +295,8 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
         <>
           {needLogin && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 该工具需要登录后使用</div>}
           {insufficientCredits && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 积分不足（需要 {effectiveCreditsCost} 积分，当前 {user!.credits}）</div>}
-          <Button onClick={submit} disabled={uploading || needLogin || !!insufficientCredits} className="w-full">
-            {uploading ? "上传中..." : effectiveCreditsCost > 0 && !effectiveLimitedFree ? `开始处理（消耗 ${effectiveCreditsCost} 积分）` : "开始处理"}
+          <Button onClick={submit} disabled={uploading || !!insufficientCredits} className="w-full">
+            {uploading ? "上传中..." : needLogin ? "登录后使用" : effectiveCreditsCost > 0 ? `开始处理（消耗 ${effectiveCreditsCost} 积分）` : "开始处理"}
           </Button>
         </>
       )}

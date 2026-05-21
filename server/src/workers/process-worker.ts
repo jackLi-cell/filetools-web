@@ -7,6 +7,7 @@ import { join } from "path"
 import { tmpdir } from "os"
 import { downloadFileFromStorage, uploadFileToStorage } from "../config/storage.js"
 import { createWorker } from "../config/queue.js"
+import { refundTaskCredits } from "../services/credits.js"
 import { processVideoCompress, processVideoConvert, processVideoToGif, processVideoExtractAudio, processAudioConvert, processAudioCompress, processAudioTrim, processAudioMerge } from "./media-worker.js"
 import { processVisibleWatermark, processInvisibleWatermark, processDetectWatermark } from "./image-worker.js"
 import { processPdfRotate, processPdfEncrypt, processPdfDecrypt, processPdfExtract, processFileHash, processClearMetadata } from "./pdf-advanced-worker.js"
@@ -36,20 +37,20 @@ async function uploadToStorage(filePath: string, key: string, _contentType: stri
 }
 
 async function markProcessing(taskId: string) {
-  await prisma.processTask.update({ where: { id: taskId }, data: { status: "processing", startedAt: new Date() } })
+  await prisma.processTask.update({ where: { id: taskId }, data: { status: "processing", startedAt: new Date(), errorMessage: null } })
 }
 
 async function markCompleted(taskId: string, outputKey: string, outputFileName: string, outputSize: number) {
   await prisma.processTask.update({
     where: { id: taskId },
-    data: { status: "completed", outputFileKey: outputKey, outputFileName, outputFileSize: BigInt(outputSize), completedAt: new Date() },
+    data: { status: "completed", outputFileKey: outputKey, outputFileName, outputFileSize: BigInt(outputSize), errorMessage: null, completedAt: new Date() },
   })
 }
 
 async function markFailed(taskId: string, message: string) {
   await prisma.processTask.update({
     where: { id: taskId },
-    data: { status: "failed", errorMessage: message, completedAt: new Date() },
+    data: { status: "processing", errorMessage: message },
   })
 }
 
@@ -318,23 +319,39 @@ const worker = createWorker(async (job: Job<ProcessJobData>) => {
     case "html-to-pdf": return processHtmlToPdf(job)
     case "pdf-page-number": return processPdfAddPageNumbers(job)
     default:
-      await markFailed(taskId, `工具 ${toolSlug} 暂未实现`)
+      throw new Error(`工具 ${toolSlug} 暂未实现`)
   }
 })
 
 worker.on("completed", async (job) => {
-  const { toolSlug } = job.data as ProcessJobData
+  const { toolSlug, taskId } = job.data as ProcessJobData
   const processTime = Date.now() - (job.processedOn || Date.now())
   const { recordToolUsage } = await import("../services/stats.js")
-  await recordToolUsage(toolSlug, true, processTime, 0)
+  const task = await prisma.processTask.findUnique({
+    where: { id: taskId },
+    select: { creditsCost: true },
+  })
+  await recordToolUsage(toolSlug, true, processTime, task?.creditsCost || 0)
   console.log(`[Worker] Done: ${job.id} (${processTime}ms)`)
 })
 
 worker.on("failed", async (job, err) => {
   if (!job) return
-  const { toolSlug } = job.data as ProcessJobData
+  const { toolSlug, taskId } = job.data as ProcessJobData
   const processTime = Date.now() - (job.processedOn || Date.now())
   const { recordToolUsage } = await import("../services/stats.js")
+  const maxAttempts = job.opts.attempts || 1
+  if (job.attemptsMade >= maxAttempts) {
+    await prisma.processTask.update({
+      where: { id: taskId },
+      data: {
+        status: "failed",
+        errorMessage: (job.failedReason || "处理失败").slice(0, 500),
+        completedAt: new Date(),
+      },
+    })
+    await refundTaskCredits(prisma, taskId)
+  }
   await recordToolUsage(toolSlug, false, processTime, 0)
   console.error(`[Worker] Failed: ${job.id}`, err.message)
 })

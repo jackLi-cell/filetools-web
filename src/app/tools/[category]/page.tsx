@@ -3,13 +3,12 @@ import { notFound } from "next/navigation"
 import { Metadata } from "next"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { categories, tools } from "@/config/tools"
-import { applyCategoryPaymentSettings } from "@/lib/payment-settings"
+import { categories } from "@/config/tools"
+import { getToolsByCategory } from "@/lib/tools-service"
 import { siteConfig } from "@/config/site"
 
-export function generateStaticParams() {
-  return categories.map((cat) => ({ category: cat.slug }))
-}
+export const dynamic = "force-dynamic"
+export const runtime = "edge"
 
 export async function generateMetadata({ params }: { params: Promise<{ category: string }> }): Promise<Metadata> {
   const { category: categorySlug } = await params
@@ -50,7 +49,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ categ
   const category = categories.find(c => c.slug === categorySlug)
   if (!category) notFound()
 
-  const categoryTools = applyCategoryPaymentSettings(tools.filter(t => t.category === categorySlug && t.version === "v0.1"))
+  const categoryTools = await getToolsByCategory(categorySlug)
 
   return (
     <div className="container mx-auto px-4 py-8 md:py-12">

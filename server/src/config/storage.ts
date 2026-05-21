@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs"
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { env } from "./env.js"
 
@@ -53,6 +53,34 @@ export async function downloadFileFromStorage(key: string, destPath: string): Pr
 
 export async function deleteFile(key: string): Promise<void> {
   await rm(pathForKey(key), { force: true })
+}
+
+export async function listFiles(prefix = ""): Promise<Array<{ key: string; mtimeMs: number; size: number }>> {
+  await ensureStorageRoot()
+  const normalizedPrefix = prefix ? assertSafeKey(prefix).replace(/\/+$/, "") : ""
+  const root = normalizedPrefix ? pathForKey(normalizedPrefix) : storageRoot
+  const files: Array<{ key: string; mtimeMs: number; size: number }> = []
+
+  async function walk(dir: string) {
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        await walk(fullPath)
+        continue
+      }
+      if (!entry.isFile()) continue
+      const info = await stat(fullPath)
+      files.push({
+        key: path.relative(storageRoot, fullPath).replace(/\\/g, "/"),
+        mtimeMs: info.mtimeMs,
+        size: info.size,
+      })
+    }
+  }
+
+  await walk(root)
+  return files
 }
 
 export async function getFileSize(key: string): Promise<number> {

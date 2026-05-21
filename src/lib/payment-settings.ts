@@ -22,7 +22,14 @@ export function applyCategoryPaymentSettings(
 
   return tools.map((tool) => {
     const paidEnabled = paidEnabledByCategory.get(tool.category) === true
-    if (paidEnabled || tool.isFree) return tool
+    if (tool.isFree || tool.creditsCost <= 0) {
+      return {
+        ...tool,
+        isFree: true,
+        creditsCost: 0,
+      }
+    }
+    if (paidEnabled) return tool
 
     return {
       ...tool,

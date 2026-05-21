@@ -7,6 +7,7 @@ import { processQueue } from "../config/queue.js"
 import { redis } from "../config/redis.js"
 import { uploadLimiter } from "../middleware/rate-limit.js"
 import { validateFileParams } from "../middleware/upload-validate.js"
+import { deductTaskCredits, refundTaskCredits } from "../services/credits.js"
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -33,13 +34,40 @@ function fileKeyBelongsToTool(fileKey: string, toolSlug: string): boolean {
   return fileKey.startsWith(`uploads/${toolSlug}/`) && !fileKey.includes("..")
 }
 
-function safeHeaderFileName(fileName: string): string {
-  return sanitizeFileName(fileName).replace(/["\r\n]/g, "_")
+function asciiFallbackFileName(fileName: string): string {
+  const clean = sanitizeFileName(fileName).replace(/["\r\n]/g, "_")
+  const ascii = clean
+    .replace(/[^\x20-\x7E]/g, "_")
+    .replace(/[\\/%?*:|<>]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 120)
+  return ascii || "download"
+}
+
+function contentDisposition(fileName: string): string {
+  const safeName = sanitizeFileName(fileName || "download")
+  const fallback = asciiFallbackFileName(safeName)
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(safeName)}`
 }
 
 function absoluteUrl(req: Request, value: string): string {
   if (/^https?:\/\//i.test(value)) return value
   return `${req.protocol}://${req.get("host")}${value}`
+}
+
+async function getSessionUser(req: Request): Promise<{ id: number; credits: number } | null> {
+  const token = req.cookies?.session_token
+  if (!token) return null
+
+  const session = await prisma.session.findUnique({
+    where: { id: token },
+    include: { user: { select: { id: true, credits: true, status: true } } },
+  })
+  if (!session || session.expiresAt < new Date() || session.user.status === "banned") {
+    if (session && session.expiresAt < new Date()) await prisma.session.delete({ where: { id: token } })
+    return null
+  }
+  return { id: session.user.id, credits: session.user.credits }
 }
 
 router.post("/upload", uploadLimiter, async (req: Request, res: Response) => {
@@ -190,17 +218,27 @@ router.post("/:toolSlug", async (req: Request, res: Response) => {
     where: { category: tool.category },
   })
   const paidEnabled = categoryPaymentSetting?.paidEnabled === true
-  const effectiveCreditsCost = paidEnabled && !tool.isFree ? tool.creditsCost : 0
-  const effectiveDailyFreeAnonymous = paidEnabled ? tool.dailyFreeAnonymous : 0
+  let effectiveCreditsCost = paidEnabled && !tool.isFree ? tool.creditsCost : 0
+  const effectiveDailyFreeRegistered = paidEnabled ? tool.dailyFreeRegistered : 0
+  const currentUser = await getSessionUser(req)
 
-  if (effectiveCreditsCost > 0 && effectiveDailyFreeAnonymous > 0) {
-    const usageKey = `usage:anon:${ip}:${toolSlug}:${new Date().toISOString().slice(0, 10)}`
+  if (effectiveCreditsCost > 0 && !currentUser) {
+    res.status(401).json({ code: 401, message: "该工具需要登录后使用" })
+    return
+  }
+
+  if (effectiveCreditsCost > 0 && currentUser && effectiveDailyFreeRegistered > 0) {
+    const usageKey = `usage:user:${currentUser.id}:${toolSlug}:${new Date().toISOString().slice(0, 10)}`
     const used = await redis.incr(usageKey)
     if (used === 1) await redis.expire(usageKey, 86400)
-    if (used > effectiveDailyFreeAnonymous) {
-      res.status(403).json({ code: 403, message: `今日免费次数已用完（${effectiveDailyFreeAnonymous} 次/天），请注册登录获取更多次数` })
-      return
+    if (used <= effectiveDailyFreeRegistered) {
+      effectiveCreditsCost = 0
     }
+  }
+
+  if (effectiveCreditsCost > 0 && currentUser && currentUser.credits < effectiveCreditsCost) {
+    res.status(402).json({ code: 402, message: `积分不足（需要 ${effectiveCreditsCost} 积分，当前 ${currentUser.credits}）` })
+    return
   }
 
   const taskId = randomUUID()
@@ -220,20 +258,60 @@ router.post("/:toolSlug", async (req: Request, res: Response) => {
       inputFileName,
       inputFileSize: BigInt(totalSize),
       params: taskParams as any,
+      userId: currentUser?.id,
       creditsCost: effectiveCreditsCost,
       ipAddress: ip,
       expiresAt,
     },
   })
 
-  await processQueue.add(toolSlug, {
-    taskId,
-    toolSlug,
-    inputFileKey: inputFiles[0].fileKey,
-    inputFileName,
-    inputFiles: inputFiles.map((file) => ({ fileKey: file.fileKey, fileName: file.fileName })),
-    params: parsed.data.params || {},
-  })
+  if (currentUser && effectiveCreditsCost > 0) {
+    try {
+      await deductTaskCredits(prisma, {
+        userId: currentUser.id,
+        toolSlug,
+        taskId,
+        amount: effectiveCreditsCost,
+      })
+    } catch (error) {
+      await prisma.processTask.update({
+        where: { id: taskId },
+        data: {
+          status: "failed",
+          errorMessage: error instanceof Error ? error.message : "积分扣除失败",
+          completedAt: new Date(),
+        },
+      })
+      res.status(402).json({ code: 402, message: error instanceof Error ? error.message : "积分扣除失败" })
+      return
+    }
+  }
+
+  try {
+    await processQueue.add(toolSlug, {
+      taskId,
+      toolSlug,
+      inputFileKey: inputFiles[0].fileKey,
+      inputFileName,
+      inputFiles: inputFiles.map((file) => ({ fileKey: file.fileKey, fileName: file.fileName })),
+      params: parsed.data.params || {},
+    })
+  } catch (error) {
+    await prisma.$transaction(async (tx) => {
+      await tx.processTask.update({
+        where: { id: taskId },
+        data: {
+          status: "failed",
+          errorMessage: "任务入队失败，请稍后重试",
+          completedAt: new Date(),
+        },
+      })
+      await refundTaskCredits(tx, taskId)
+    })
+    const message = error instanceof Error ? error.message : "任务提交失败"
+    res.status(500).json({ code: 500, message })
+    return
+  }
 
   res.json({ code: 0, data: { taskId } })
 })
@@ -302,9 +380,8 @@ router.get("/download-file/:encodedKey", async (req: Request, res: Response) => 
   }
 
   try {
-    const fileName = safeHeaderFileName(task.outputFileName || "download")
-    const encodedName = encodeURIComponent(fileName)
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"; filename*=UTF-8''${encodedName}`)
+    const fileName = task.outputFileName || "download"
+    res.setHeader("Content-Disposition", contentDisposition(fileName))
     res.setHeader("Content-Length", String(await getFileSize(key)))
     createStorageReadStream(key).pipe(res)
   } catch (error) {

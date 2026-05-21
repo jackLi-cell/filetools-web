@@ -12,13 +12,34 @@ interface ApiTool {
   creditsCost: number
 }
 
+function mergeStaticTools(apiTools: ApiTool[] = [], settings: CategoryPaymentSetting[] = defaultCategoryPaymentSettings): Tool[] {
+  const staticToolMap = new Map(staticTools.map((tool) => [tool.slug, tool]))
+  return applyCategoryPaymentSettings(
+    apiTools
+      .map((apiTool) => {
+        const staticTool = staticToolMap.get(apiTool.toolSlug)
+        return {
+          slug: apiTool.toolSlug,
+          name: apiTool.name || staticTool?.name || apiTool.toolSlug,
+          description: apiTool.description || staticTool?.description || "",
+          category: apiTool.category || staticTool?.category || "tools",
+          isFree: apiTool.isFree,
+          creditsCost: apiTool.creditsCost,
+          isLocal: staticTool?.isLocal ?? (apiTool.isFree && apiTool.creditsCost <= 0),
+          version: staticTool?.version ?? "v0.1",
+        }
+      }),
+    settings,
+  )
+}
+
 export async function fetchTools(): Promise<Tool[]> {
   if (!API_URL) return applyCategoryPaymentSettings(staticTools.filter(t => t.version === "v0.1"))
 
   try {
     const [toolsRes, settingsRes] = await Promise.all([
-      fetch(`${API_URL}/api/tools`, { next: { revalidate: 60 } }),
-      fetch(`${API_URL}/api/tools/category-payment-settings`, { next: { revalidate: 60 } }),
+      fetch(`${API_URL}/api/tools`, { cache: "no-store" }),
+      fetch(`${API_URL}/api/tools/category-payment-settings`, { cache: "no-store" }),
     ])
     if (!toolsRes.ok) return applyCategoryPaymentSettings(staticTools.filter(t => t.version === "v0.1"))
     const data = await toolsRes.json()
@@ -27,16 +48,7 @@ export async function fetchTools(): Promise<Tool[]> {
       ? settingsData.data
       : defaultCategoryPaymentSettings
     if (data.code === 0 && Array.isArray(data.data)) {
-      return applyCategoryPaymentSettings(data.data.map((t: ApiTool) => ({
-        slug: t.toolSlug,
-        name: t.name,
-        description: t.description || "",
-        category: t.category,
-        isFree: t.isFree,
-        creditsCost: t.creditsCost,
-        isLocal: t.isFree && t.creditsCost === 0,
-        version: "v0.1",
-      })), settings)
+      return mergeStaticTools(data.data as ApiTool[], settings)
     }
   } catch {}
 
@@ -47,11 +59,15 @@ export function getCategories(): ToolCategory[] {
   return staticCategories
 }
 
-export function getToolsByCategory(categorySlug: string): Tool[] {
-  return applyCategoryPaymentSettings(staticTools.filter(t => t.category === categorySlug && t.version === "v0.1"))
+export async function getToolsByCategory(categorySlug: string): Promise<Tool[]> {
+  return (await fetchTools()).filter(t => t.category === categorySlug)
 }
 
-export function getToolBySlug(slug: string): Tool | undefined {
+export async function getToolBySlug(slug: string): Promise<Tool | undefined> {
+  return (await fetchTools()).find(t => t.slug === slug)
+}
+
+export function getStaticToolBySlug(slug: string): Tool | undefined {
   const tool = staticTools.find(t => t.slug === slug)
   return tool ? applyCategoryPaymentSettings([tool])[0] : undefined
 }

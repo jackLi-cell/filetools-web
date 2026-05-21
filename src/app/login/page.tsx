@@ -35,7 +35,7 @@ export default function LoginPage() {
         if (session.code === 0 && session.data?.role === "admin") {
           router.push(safeNext || "/admin")
         } else {
-          router.push("/account")
+          router.push(safeNext || "/account")
         }
       } else {
         setError(res.message || "登录失败")

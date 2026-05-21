@@ -11,15 +11,37 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
-import { filterTools } from "@/lib/tool-filter"
+import { fetchTools } from "@/lib/tools-service"
 import { cn } from "@/lib/utils"
+import type { Tool } from "@/config/tools"
 
 export function HeaderToolSearch() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
+  const [tools, setTools] = useState<Tool[]>([])
   const router = useRouter()
 
-  const results = useMemo(() => filterTools(query), [query])
+  useEffect(() => {
+    let cancelled = false
+    fetchTools()
+      .then((list) => {
+        if (!cancelled) setTools(list)
+      })
+      .catch(() => {
+        if (!cancelled) setTools([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const results = useMemo(() => {
+    if (!query.trim()) return []
+    const q = query.toLowerCase()
+    return tools
+      .filter((t) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q) || t.slug.includes(q))
+      .slice(0, 8)
+  }, [query, tools])
 
   // Global ⌘K / Ctrl+K shortcut
   useEffect(() => {
@@ -120,7 +142,11 @@ export function HeaderToolSearch() {
                         <span className="shrink-0 rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700">
                           免费
                         </span>
-                      ) : null}
+                      ) : (
+                        <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
+                          {tool.creditsCost} 积分
+                        </span>
+                      )}
                     </button>
                   </li>
                 ))}
@@ -139,8 +165,30 @@ export function HeaderToolSearch() {
  */
 export function MobileToolSearchTrigger({ onClose }: { onClose?: () => void }) {
   const [query, setQuery] = useState("")
+  const [tools, setTools] = useState<Tool[]>([])
   const router = useRouter()
-  const results = useMemo(() => filterTools(query, 6), [query])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchTools()
+      .then((list) => {
+        if (!cancelled) setTools(list)
+      })
+      .catch(() => {
+        if (!cancelled) setTools([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const results = useMemo(() => {
+    if (!query.trim()) return []
+    const q = query.toLowerCase()
+    return tools
+      .filter((t) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q) || t.slug.includes(q))
+      .slice(0, 6)
+  }, [query, tools])
 
   return (
     <div className="flex flex-col gap-2">
@@ -184,7 +232,11 @@ export function MobileToolSearchTrigger({ onClose }: { onClose?: () => void }) {
                       <span className="shrink-0 rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700">
                         免费
                       </span>
-                    ) : null}
+                    ) : (
+                      <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
+                        {tool.creditsCost} 积分
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}

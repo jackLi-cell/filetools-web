@@ -3,19 +3,19 @@ import { notFound } from "next/navigation"
 import { Metadata } from "next"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { tools, getToolBySlug, getCategoryBySlug } from "@/config/tools"
+import { getCategoryBySlug } from "@/config/tools"
 import { getToolSeo } from "@/config/seo"
 import { siteConfig } from "@/config/site"
 import { ToolRenderer } from "@/components/tools/tool-renderer"
 import { ToolDisclaimer } from "@/components/tool-disclaimer"
-import { applyCategoryPaymentSettings, applyCategoryPaymentSetting } from "@/lib/payment-settings"
+import { fetchTools, getStaticToolBySlug, getToolBySlug } from "@/lib/tools-service"
 
 export const runtime = "edge"
+export const dynamic = "force-dynamic"
 
 export async function generateMetadata({ params }: { params: Promise<{ category: string; slug: string }> }): Promise<Metadata> {
   const { slug } = await params
-  const rawTool = getToolBySlug(slug)
-  const tool = rawTool ? applyCategoryPaymentSetting(rawTool) : undefined
+  const tool = await getToolBySlug(slug) || getStaticToolBySlug(slug)
   const seo = getToolSeo(slug)
 
   if (!tool) return {}
@@ -41,15 +41,16 @@ export async function generateMetadata({ params }: { params: Promise<{ category:
 
 export default async function ToolPage({ params }: { params: Promise<{ category: string; slug: string }> }) {
   const { category: categorySlug, slug } = await params
-  const tool = getToolBySlug(slug)
+  const tool = await getToolBySlug(slug)
   const category = getCategoryBySlug(categorySlug)
   const seo = getToolSeo(slug)
 
   if (!tool || !category) notFound()
 
-  const relatedTools = applyCategoryPaymentSettings(tools
+  const allTools = await fetchTools()
+  const relatedTools = allTools
     .filter(t => t.category === tool.category && t.slug !== tool.slug && t.version === "v0.1")
-    .slice(0, 4))
+    .slice(0, 4)
 
   const faqSchema = seo?.faq && seo.faq.length > 0 ? {
     "@context": "https://schema.org",

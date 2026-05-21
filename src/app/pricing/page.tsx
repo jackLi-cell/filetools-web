@@ -3,9 +3,11 @@ import { Metadata } from "next"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { tools } from "@/config/tools"
-import { applyCategoryPaymentSettings } from "@/lib/payment-settings"
+import { fetchTools } from "@/lib/tools-service"
 import { siteConfig } from "@/config/site"
+
+export const dynamic = "force-dynamic"
+export const runtime = "edge"
 
 export const metadata: Metadata = {
   title: "定价说明 - 工具积分消耗",
@@ -15,8 +17,8 @@ export const metadata: Metadata = {
   },
 }
 
-export default function PricingPage() {
-  const v01Tools = applyCategoryPaymentSettings(tools.filter(t => t.version === "v0.1"))
+export default async function PricingPage() {
+  const v01Tools = await fetchTools()
   const freeTools = v01Tools.filter(t => t.isFree)
   const paidTools = v01Tools.filter(t => !t.isFree)
 
@@ -125,7 +127,7 @@ export default function PricingPage() {
         </div>
 
         <div className="mt-5 p-4 bg-blue-50 rounded-lg text-xs text-blue-800">
-          💡 <strong>限免规则</strong>：PDF 基础工具（转图片、合并、拆分）匿名用户每天可免费使用 3 次，注册用户每天 5 次，超出后按积分计费。
+          💡 <strong>使用规则</strong>：免费工具无需登录；需要积分的工具请先登录，若后台配置了注册用户每日免费次数，将优先使用免费次数。
         </div>
       </Card>
 
