@@ -37,18 +37,9 @@ export function getApiBaseUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_API_URL?.trim()
   const explicitBaseUrl = explicit ? normalizeBaseUrl(explicit) : ""
   const explicitHost = explicitBaseUrl ? getHostname(explicitBaseUrl) : null
-  const explicitRuntimeUrl = explicitBaseUrl ? deriveApiBaseUrl(explicitBaseUrl) : null
 
-  if (explicitBaseUrl && process.env.NODE_ENV !== "production") {
+  if (explicitBaseUrl && (explicitHost?.startsWith("api.") || isLocalHost(explicitHost || ""))) {
     return explicitBaseUrl
-  }
-
-  if (explicitBaseUrl && explicitHost?.startsWith("api.")) {
-    return explicitBaseUrl
-  }
-
-  if (explicitBaseUrl && !explicitHost) {
-    return explicitRuntimeUrl || explicitBaseUrl
   }
 
   if (typeof window !== "undefined") {
