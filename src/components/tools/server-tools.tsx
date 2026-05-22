@@ -242,7 +242,7 @@ export function WordToPdfTool() {
     toolSlug="word-to-pdf"
     accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     maxSizeMb={50}
-    creditsCost={3}
+    creditsCost={4}
     acceptHint="支持 .doc / .docx 文件"
   />
 }

@@ -13,7 +13,7 @@
  * 同步检查（可在 CI 加 diff 检查）：
  *   diff site/src/config/tools.ts site/server/src/shared/tools.ts
  *
- * 上次同步时间: 2026-05-14
+ * 上次同步时间: 2026-05-23
  */
 
 export interface Tool {
@@ -112,7 +112,7 @@ export const tools: Tool[] = [
   { slug: "data-mask", name: "数据脱敏", description: "自动识别并脱敏手机号、身份证、邮箱等", category: "text", isFree: true, creditsCost: 0, isLocal: true, version: "v0.1" },
   { slug: "text-cleaner", name: "文本清理", description: "去除多余空格、空行、乱码和格式问题", category: "text", isFree: true, creditsCost: 0, isLocal: true, version: "v0.1" },
   // 文档转换（LibreOffice）
-  { slug: "word-to-pdf", name: "Word 转 PDF", description: "将 Word 文档转换为 PDF 格式", category: "convert", isFree: false, creditsCost: 3, isLocal: false, version: "v0.1" },
+  { slug: "word-to-pdf", name: "Word 转 PDF", description: "将 Word 文档转换为 PDF 格式", category: "convert", isFree: false, creditsCost: 4, isLocal: false, version: "v0.1" },
   { slug: "pdf-to-word", name: "PDF 转 Word", description: "将 PDF 转换为可编辑的 Word 文档", category: "convert", isFree: false, creditsCost: 5, isLocal: false, version: "v0.1" },
   { slug: "excel-to-pdf", name: "Excel 转 PDF", description: "将 Excel 表格转换为 PDF 格式", category: "convert", isFree: false, creditsCost: 3, isLocal: false, version: "v0.1" },
   { slug: "excel-to-image", name: "Excel 转图片", description: "将 Excel 表格转换为 PNG 图片", category: "convert", isFree: false, creditsCost: 4, isLocal: false, version: "v0.1" },
