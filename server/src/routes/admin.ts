@@ -273,8 +273,16 @@ router.put("/category-payment-settings/:category", async (req: Request, res: Res
     data: { paidEnabled, updatedBy: (req as any).userId },
   })
 
+  const categoryTools = await prisma.toolConfig.findMany({
+    where: { category },
+    select: { toolSlug: true },
+  })
+
   await redis.del("tools:category-payment-settings")
   await redis.del("tools:list")
+  if (categoryTools.length > 0) {
+    await redis.del(...categoryTools.map((tool) => `tools:${tool.toolSlug}`))
+  }
 
   res.json({ code: 0, message: "模块付费开关已更新" })
 })

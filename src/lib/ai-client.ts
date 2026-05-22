@@ -1,6 +1,8 @@
 // AI prefill / attachment helpers for sharing files between AI conversation and tool pages.
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+import { getApiBaseUrl } from "@/lib/api-base"
+
+const API_URL = getApiBaseUrl()
 const PREFILL_KEY = "ai-prefill"
 
 export interface PrefillPayload {

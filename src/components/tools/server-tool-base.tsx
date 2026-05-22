@@ -45,11 +45,22 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
 
     async function fetchPaymentSetting() {
       try {
-        const [toolRes, settingsRes] = await Promise.all([
-          api.get<{ category: string; isFree: boolean; creditsCost: number }>(`/api/tools/${toolSlug}`),
-          api.get<CategoryPaymentSetting[]>("/api/tools/category-payment-settings"),
-        ])
+        const toolRes = await api.get<{
+          category: string
+          isFree: boolean
+          creditsCost: number
+          effectiveCreditsCost?: number
+          effectiveIsFree?: boolean
+        }>(`/api/tools/${toolSlug}`)
 
+        if (cancelled) return
+
+        if (toolRes.data?.effectiveCreditsCost !== undefined) {
+          setEffectiveCreditsCost(toolRes.data.effectiveCreditsCost)
+          return
+        }
+
+        const settingsRes = await api.get<CategoryPaymentSetting[]>("/api/tools/category-payment-settings")
         if (cancelled) return
 
         const category = toolRes.data?.category

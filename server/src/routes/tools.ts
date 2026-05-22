@@ -1,10 +1,26 @@
 import { Router, Request, Response } from "express"
 import { PrismaClient } from "@prisma/client"
+import type { CategoryPaymentSetting, ToolConfig } from "@prisma/client"
 import { redis } from "../config/redis.js"
 import { ensureCategoryPaymentSettings } from "../services/category-payment.js"
 
 const router = Router()
 const prisma = new PrismaClient()
+
+function withEffectivePricing(
+  tool: ToolConfig,
+  setting?: Pick<CategoryPaymentSetting, "paidEnabled"> | null
+) {
+  const categoryPaidEnabled = setting?.paidEnabled === true
+  const effectiveCreditsCost = categoryPaidEnabled && !tool.isFree ? tool.creditsCost : 0
+
+  return {
+    ...tool,
+    categoryPaidEnabled,
+    effectiveIsFree: effectiveCreditsCost <= 0,
+    effectiveCreditsCost,
+  }
+}
 
 router.get("/category-payment-settings", async (_req: Request, res: Response) => {
   const cacheKey = "tools:category-payment-settings"
@@ -32,13 +48,21 @@ router.get("/", async (_req: Request, res: Response) => {
     return
   }
 
-  const tools = await prisma.toolConfig.findMany({
-    where: { enabled: true },
-    orderBy: [{ category: "asc" }, { priority: "desc" }],
-  })
+  await ensureCategoryPaymentSettings(prisma)
 
-  await redis.setex(cacheKey, 60, JSON.stringify(tools))
-  res.json({ code: 0, data: tools })
+  const [tools, settings] = await Promise.all([
+    prisma.toolConfig.findMany({
+      where: { enabled: true },
+      orderBy: [{ category: "asc" }, { priority: "desc" }],
+    }),
+    prisma.categoryPaymentSetting.findMany(),
+  ])
+
+  const settingByCategory = new Map(settings.map((setting) => [setting.category, setting]))
+  const payload = tools.map((tool) => withEffectivePricing(tool, settingByCategory.get(tool.category)))
+
+  await redis.setex(cacheKey, 60, JSON.stringify(payload))
+  res.json({ code: 0, data: payload })
 })
 
 router.get("/:slug", async (req: Request, res: Response) => {
@@ -56,8 +80,12 @@ router.get("/:slug", async (req: Request, res: Response) => {
     return
   }
 
-  await redis.setex(cacheKey, 60, JSON.stringify(tool))
-  res.json({ code: 0, data: tool })
+  await ensureCategoryPaymentSettings(prisma)
+  const setting = await prisma.categoryPaymentSetting.findUnique({ where: { category: tool.category } })
+  const payload = withEffectivePricing(tool, setting)
+
+  await redis.setex(cacheKey, 60, JSON.stringify(payload))
+  res.json({ code: 0, data: payload })
 })
 
 export default router

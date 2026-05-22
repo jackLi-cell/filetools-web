@@ -16,8 +16,9 @@ import {
 import { FileChip } from "@/components/ai/file-chip"
 import { ArrowUp, Paperclip, Square } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getApiBaseUrl } from "@/lib/api-base"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+const API_URL = getApiBaseUrl()
 
 interface AttachmentItem {
   /** local id for tracking before upload completes */

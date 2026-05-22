@@ -1,7 +1,8 @@
 import { tools as staticTools, categories as staticCategories, Tool, ToolCategory } from "@/config/tools"
 import { applyCategoryPaymentSettings, CategoryPaymentSetting, defaultCategoryPaymentSettings } from "@/lib/payment-settings"
+import { getApiBaseUrl } from "@/lib/api-base"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL
+const API_URL = getApiBaseUrl()
 
 interface ApiTool {
   toolSlug: string
@@ -10,32 +11,35 @@ interface ApiTool {
   category: string
   isFree: boolean
   creditsCost: number
+  effectiveIsFree?: boolean
+  effectiveCreditsCost?: number
 }
 
 function mergeStaticTools(apiTools: ApiTool[] = [], settings: CategoryPaymentSetting[] = defaultCategoryPaymentSettings): Tool[] {
   const staticToolMap = new Map(staticTools.map((tool) => [tool.slug, tool]))
-  return applyCategoryPaymentSettings(
-    apiTools
-      .map((apiTool) => {
-        const staticTool = staticToolMap.get(apiTool.toolSlug)
-        return {
-          slug: apiTool.toolSlug,
-          name: apiTool.name || staticTool?.name || apiTool.toolSlug,
-          description: apiTool.description || staticTool?.description || "",
-          category: apiTool.category || staticTool?.category || "tools",
-          isFree: apiTool.isFree,
-          creditsCost: apiTool.creditsCost,
-          isLocal: staticTool?.isLocal ?? (apiTool.isFree && apiTool.creditsCost <= 0),
-          version: staticTool?.version ?? "v0.1",
-        }
-      }),
-    settings,
+  const hasEffectivePricing = apiTools.some(
+    (apiTool) => apiTool.effectiveIsFree !== undefined || apiTool.effectiveCreditsCost !== undefined,
   )
+  const mergedTools = apiTools.map((apiTool) => {
+    const staticTool = staticToolMap.get(apiTool.toolSlug)
+    const isFree = apiTool.effectiveIsFree ?? apiTool.isFree
+    const creditsCost = apiTool.effectiveCreditsCost ?? apiTool.creditsCost
+    return {
+      slug: apiTool.toolSlug,
+      name: apiTool.name || staticTool?.name || apiTool.toolSlug,
+      description: apiTool.description || staticTool?.description || "",
+      category: apiTool.category || staticTool?.category || "tools",
+      isFree,
+      creditsCost,
+      isLocal: staticTool?.isLocal ?? (isFree && creditsCost <= 0),
+      version: staticTool?.version ?? "v0.1",
+    }
+  })
+
+  return hasEffectivePricing ? mergedTools : applyCategoryPaymentSettings(mergedTools, settings)
 }
 
 export async function fetchTools(): Promise<Tool[]> {
-  if (!API_URL) return applyCategoryPaymentSettings(staticTools.filter(t => t.version === "v0.1"))
-
   try {
     const [toolsRes, settingsRes] = await Promise.all([
       fetch(`${API_URL}/api/tools`, { cache: "no-store" }),
