@@ -1,7 +1,19 @@
 import { siteConfig } from "@/config/site"
 
 function normalizeBaseUrl(url: string) {
-  return url.replace(/\/+$/, "")
+  const trimmed = url.replace(/\/+$/, "")
+
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.pathname === "/api") {
+      parsed.pathname = ""
+      parsed.search = ""
+      parsed.hash = ""
+      return parsed.toString().replace(/\/+$/, "")
+    }
+  } catch {}
+
+  return trimmed
 }
 
 function getHostname(url: string): string | null {
