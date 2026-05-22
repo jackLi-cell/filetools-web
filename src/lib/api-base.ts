@@ -5,12 +5,7 @@ function normalizeBaseUrl(url: string) {
 
   try {
     const parsed = new URL(trimmed)
-    if (parsed.pathname === "/api") {
-      parsed.pathname = ""
-      parsed.search = ""
-      parsed.hash = ""
-      return parsed.toString().replace(/\/+$/, "")
-    }
+    return parsed.origin
   } catch {}
 
   return trimmed
@@ -49,8 +44,13 @@ export function getApiBaseUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_API_URL?.trim()
   const explicitBaseUrl = explicit ? normalizeBaseUrl(explicit) : ""
   const explicitHost = explicitBaseUrl ? getHostname(explicitBaseUrl) : null
+  const isProduction = process.env.NODE_ENV === "production"
 
-  if (explicitBaseUrl && (explicitHost?.startsWith("api.") || isLocalHost(explicitHost || ""))) {
+  if (explicitBaseUrl && explicitHost?.startsWith("api.")) {
+    return explicitBaseUrl
+  }
+
+  if (explicitBaseUrl && !isProduction && isLocalHost(explicitHost || "")) {
     return explicitBaseUrl
   }
 
