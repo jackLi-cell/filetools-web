@@ -1,5 +1,5 @@
 import { tools as staticTools, categories as staticCategories, Tool, ToolCategory } from "@/config/tools"
-import { applyCategoryPaymentSettings, CategoryPaymentSetting, defaultCategoryPaymentSettings } from "@/lib/payment-settings"
+import { applyCategoryPaymentSettings, CategoryPaymentSetting } from "@/lib/payment-settings"
 import { getApiBaseUrl } from "@/lib/api-base"
 
 const API_URL = getApiBaseUrl()
@@ -15,7 +15,7 @@ interface ApiTool {
   effectiveCreditsCost?: number
 }
 
-function mergeStaticTools(apiTools: ApiTool[] = [], settings: CategoryPaymentSetting[] = defaultCategoryPaymentSettings): Tool[] {
+function mergeStaticTools(apiTools: ApiTool[] = [], settings?: CategoryPaymentSetting[]): Tool[] {
   const staticToolMap = new Map(staticTools.map((tool) => [tool.slug, tool]))
   const hasEffectivePricing = apiTools.some(
     (apiTool) => apiTool.effectiveIsFree !== undefined || apiTool.effectiveCreditsCost !== undefined,
@@ -36,7 +36,9 @@ function mergeStaticTools(apiTools: ApiTool[] = [], settings: CategoryPaymentSet
     }
   })
 
-  return hasEffectivePricing ? mergedTools : applyCategoryPaymentSettings(mergedTools, settings)
+  if (hasEffectivePricing) return mergedTools
+
+  return settings ? applyCategoryPaymentSettings(mergedTools, settings) : mergedTools
 }
 
 export async function fetchTools(): Promise<Tool[]> {
@@ -45,18 +47,18 @@ export async function fetchTools(): Promise<Tool[]> {
       fetch(`${API_URL}/api/tools`, { cache: "no-store" }),
       fetch(`${API_URL}/api/tools/category-payment-settings`, { cache: "no-store" }),
     ])
-    if (!toolsRes.ok) return applyCategoryPaymentSettings(staticTools.filter(t => t.version === "v0.1"))
+    if (!toolsRes.ok) return staticTools.filter(t => t.version === "v0.1")
     const data = await toolsRes.json()
     const settingsData = settingsRes.ok ? await settingsRes.json() : null
-    const settings: CategoryPaymentSetting[] = settingsData?.code === 0 && Array.isArray(settingsData.data)
+    const settings: CategoryPaymentSetting[] | undefined = settingsData?.code === 0 && Array.isArray(settingsData.data)
       ? settingsData.data
-      : defaultCategoryPaymentSettings
+      : undefined
     if (data.code === 0 && Array.isArray(data.data)) {
       return mergeStaticTools(data.data as ApiTool[], settings)
     }
   } catch {}
 
-  return applyCategoryPaymentSettings(staticTools.filter(t => t.version === "v0.1"))
+  return staticTools.filter(t => t.version === "v0.1")
 }
 
 export function getCategories(): ToolCategory[] {
@@ -73,5 +75,5 @@ export async function getToolBySlug(slug: string): Promise<Tool | undefined> {
 
 export function getStaticToolBySlug(slug: string): Tool | undefined {
   const tool = staticTools.find(t => t.slug === slug)
-  return tool ? applyCategoryPaymentSettings([tool])[0] : undefined
+  return tool
 }

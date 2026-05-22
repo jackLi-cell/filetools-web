@@ -4,17 +4,24 @@ function normalizeBaseUrl(url: string) {
   return url.replace(/\/+$/, "")
 }
 
+function getHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return null
+  }
+}
+
+function isLocalHost(host: string) {
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".local")
+}
+
 function deriveApiBaseUrl(siteUrl: string): string | null {
   try {
     const parsed = new URL(siteUrl)
     const host = parsed.hostname.replace(/^www\./, "")
 
-    if (
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "::1" ||
-      host.endsWith(".local")
-    ) {
+    if (isLocalHost(host)) {
       return null
     }
 
@@ -29,9 +36,19 @@ function deriveApiBaseUrl(siteUrl: string): string | null {
 export function getApiBaseUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_API_URL?.trim()
   const explicitBaseUrl = explicit ? normalizeBaseUrl(explicit) : ""
+  const explicitHost = explicitBaseUrl ? getHostname(explicitBaseUrl) : null
   const explicitRuntimeUrl = explicitBaseUrl ? deriveApiBaseUrl(explicitBaseUrl) : null
-  if (explicitBaseUrl && (process.env.NODE_ENV !== "production" || explicitRuntimeUrl)) {
+
+  if (explicitBaseUrl && process.env.NODE_ENV !== "production") {
     return explicitBaseUrl
+  }
+
+  if (explicitBaseUrl && explicitHost?.startsWith("api.")) {
+    return explicitBaseUrl
+  }
+
+  if (explicitBaseUrl && !explicitHost) {
+    return explicitRuntimeUrl || explicitBaseUrl
   }
 
   if (typeof window !== "undefined") {
