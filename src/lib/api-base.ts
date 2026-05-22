@@ -28,7 +28,11 @@ function deriveApiBaseUrl(siteUrl: string): string | null {
 
 export function getApiBaseUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_API_URL?.trim()
-  if (explicit) return normalizeBaseUrl(explicit)
+  const explicitBaseUrl = explicit ? normalizeBaseUrl(explicit) : ""
+  const explicitRuntimeUrl = explicitBaseUrl ? deriveApiBaseUrl(explicitBaseUrl) : null
+  if (explicitBaseUrl && (process.env.NODE_ENV !== "production" || explicitRuntimeUrl)) {
+    return explicitBaseUrl
+  }
 
   if (typeof window !== "undefined") {
     const runtimeUrl = deriveApiBaseUrl(window.location.origin)
