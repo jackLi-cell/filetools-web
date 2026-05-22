@@ -22,6 +22,31 @@ function withEffectivePricing(
   }
 }
 
+function hasEffectivePricing(payload: unknown) {
+  if (!payload || typeof payload !== "object") return false
+  const tool = payload as Record<string, unknown>
+  return (
+    typeof tool.categoryPaidEnabled === "boolean" &&
+    typeof tool.effectiveIsFree === "boolean" &&
+    typeof tool.effectiveCreditsCost === "number"
+  )
+}
+
+async function getCachedPayload(cacheKey: string, isValid: (payload: unknown) => boolean) {
+  const cached = await redis.get(cacheKey)
+  if (!cached) return null
+
+  try {
+    const payload = JSON.parse(cached)
+    if (isValid(payload)) return payload
+  } catch {
+    // Drop corrupt or incompatible cache entries and rebuild from database below.
+  }
+
+  await redis.del(cacheKey)
+  return null
+}
+
 router.get("/category-payment-settings", async (_req: Request, res: Response) => {
   const cacheKey = "tools:category-payment-settings"
   const cached = await redis.get(cacheKey)
@@ -42,9 +67,12 @@ router.get("/category-payment-settings", async (_req: Request, res: Response) =>
 
 router.get("/", async (_req: Request, res: Response) => {
   const cacheKey = "tools:list"
-  const cached = await redis.get(cacheKey)
+  const cached = await getCachedPayload(
+    cacheKey,
+    (payload) => Array.isArray(payload) && payload.every(hasEffectivePricing)
+  )
   if (cached) {
-    res.json({ code: 0, data: JSON.parse(cached) })
+    res.json({ code: 0, data: cached })
     return
   }
 
@@ -68,9 +96,9 @@ router.get("/", async (_req: Request, res: Response) => {
 router.get("/:slug", async (req: Request, res: Response) => {
   const slug = req.params.slug as string
   const cacheKey = `tools:${slug}`
-  const cached = await redis.get(cacheKey)
+  const cached = await getCachedPayload(cacheKey, hasEffectivePricing)
   if (cached) {
-    res.json({ code: 0, data: JSON.parse(cached) })
+    res.json({ code: 0, data: cached })
     return
   }
 
