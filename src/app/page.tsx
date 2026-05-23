@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const popularTools = (await fetchTools()).slice(0, 8)
   return (
-    <div className="home-page flex flex-col">
+    <div className="home-page flex flex-col" data-page="home">
       <section className="home-ai-shell border-b bg-gradient-to-b from-blue-50/50 to-white py-12 md:py-20">
         <div className="container mx-auto px-4">
           <div className="ai-landing-copy text-center mb-8 md:mb-10">
