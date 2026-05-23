@@ -452,6 +452,7 @@ export function AiHero() {
 
   return (
     <div
+      data-component="ai-hero"
       className={cn(
         "w-full transition-all duration-700 ease-out",
         hasConversation
