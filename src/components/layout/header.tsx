@@ -8,31 +8,40 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { siteConfig } from "@/config/site"
 import { useAuth } from "@/lib/auth-context"
 import { HeaderToolSearch, MobileToolSearchTrigger } from "@/components/header-tool-search"
+import { LanguageSwitcher } from "@/components/language-switcher"
+import type { Dictionary } from "@/i18n/get-dictionary"
 
-const navLinks = [
-  { href: "/", label: "首页" },
-  { href: "/tools", label: "全部工具" },
-  { href: "/pricing", label: "定价" },
-]
+interface HeaderProps {
+  locale: string
+  dict: Dictionary
+}
 
-export function Header() {
+export function Header({ locale, dict }: HeaderProps) {
   const [open, setOpen] = useState(false)
   const { user, loading, logout } = useAuth()
   const pathname = usePathname()
 
+  const prefix = `/${locale}`
+
+  const navLinks = [
+    { href: `${prefix}`, label: dict.nav.home },
+    { href: `${prefix}/tools`, label: dict.nav.allTools },
+    { href: `${prefix}/pricing`, label: dict.nav.pricing },
+  ]
+
   const isActive = (href: string) => {
-    if (href === "/") return pathname === "/"
+    if (href === prefix) return pathname === prefix || pathname === `${prefix}/`
     return pathname === href || pathname.startsWith(`${href}/`)
   }
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
       <div className="container mx-auto flex h-14 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href={prefix} className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 text-white text-sm">
             🐱
           </div>
-          <span className="text-lg font-semibold text-gray-900">{siteConfig.name}</span>
+          <span className="text-lg font-semibold text-gray-900">{dict.site.name}</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-6">
@@ -53,19 +62,20 @@ export function Header() {
 
         <div className="hidden md:flex items-center gap-3">
           <HeaderToolSearch />
+          <LanguageSwitcher locale={locale} dict={dict} />
           {loading ? null : user ? (
             <>
-              <Link href="/account" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-2">
-                <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">{user.credits} 积分</span>
+              <Link href={`${prefix}/account`} className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">{user.credits} {dict.nav.credits}</span>
                 <span>{user.name || user.email}</span>
               </Link>
-              <Link href="/account/recharge"><Button variant="outline" size="sm">充值</Button></Link>
-              <Button variant="ghost" size="sm" onClick={logout}>退出</Button>
+              <Link href={`${prefix}/account/recharge`}><Button variant="outline" size="sm">{dict.nav.recharge}</Button></Link>
+              <Button variant="ghost" size="sm" onClick={logout}>{dict.nav.logout}</Button>
             </>
           ) : (
             <>
-              <Link href="/login"><Button variant="ghost" size="sm">登录</Button></Link>
-              <Link href="/register"><Button size="sm">注册</Button></Link>
+              <Link href={`${prefix}/login`}><Button variant="ghost" size="sm">{dict.nav.login}</Button></Link>
+              <Link href={`${prefix}/register`}><Button size="sm">{dict.nav.register}</Button></Link>
             </>
           )}
         </div>
@@ -93,21 +103,24 @@ export function Header() {
                   {link.label}
                 </Link>
               ))}
+              <div className="px-3 py-2">
+                <LanguageSwitcher locale={locale} dict={dict} />
+              </div>
               <div className="border-t pt-4 mt-2 flex flex-col gap-2">
                 {user ? (
                   <>
-                    <Link href="/account" onClick={() => setOpen(false)}>
-                      <Button variant="outline" className="w-full">个人中心（{user.credits} 积分）</Button>
+                    <Link href={`${prefix}/account`} onClick={() => setOpen(false)}>
+                      <Button variant="outline" className="w-full">{dict.nav.account}（{user.credits} {dict.nav.credits}）</Button>
                     </Link>
-                    <Link href="/account/recharge" onClick={() => setOpen(false)}>
-                      <Button className="w-full">积分充值</Button>
+                    <Link href={`${prefix}/account/recharge`} onClick={() => setOpen(false)}>
+                      <Button className="w-full">{dict.nav.recharge}</Button>
                     </Link>
-                    <Button variant="ghost" onClick={() => { logout(); setOpen(false) }}>退出登录</Button>
+                    <Button variant="ghost" onClick={() => { logout(); setOpen(false) }}>{dict.nav.logoutFull}</Button>
                   </>
                 ) : (
                   <>
-                    <Link href="/login" onClick={() => setOpen(false)}><Button variant="outline" className="w-full">登录</Button></Link>
-                    <Link href="/register" onClick={() => setOpen(false)}><Button className="w-full">注册</Button></Link>
+                    <Link href={`${prefix}/login`} onClick={() => setOpen(false)}><Button variant="outline" className="w-full">{dict.nav.login}</Button></Link>
+                    <Link href={`${prefix}/register`} onClick={() => setOpen(false)}><Button className="w-full">{dict.nav.register}</Button></Link>
                   </>
                 )}
               </div>

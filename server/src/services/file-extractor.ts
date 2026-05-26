@@ -6,6 +6,7 @@
  * - application/pdf → pdf-parse（最多 50 页）
  * - .docx (officedocument.wordprocessingml) → mammoth.extractRawText
  * - .xlsx (officedocument.spreadsheetml.sheet) → exceljs，前 500 行，tab 分隔
+ * - .doc / .xls / .ppt / .pptx → 作为站内工具附件保存，文本预览返回占位说明
  *
  * 不支持类型一律抛 UnsupportedFileTypeError，路由层捕获返 400。
  *
@@ -65,8 +66,18 @@ const PDF_MIMES = new Set(["application/pdf"])
 const DOCX_MIMES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ])
+const DOC_MIMES = new Set([
+  "application/msword",
+])
 const XLSX_MIMES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+])
+const XLS_MIMES = new Set([
+  "application/vnd.ms-excel",
+])
+const PPT_MIMES = new Set([
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ])
 
 function isTextMime(mime: string): boolean {
@@ -234,6 +245,13 @@ async function extractXlsx(buffer: Buffer): Promise<ExtractedFile> {
   }
 }
 
+function extractOfficeAttachmentPlaceholder(kind: string, name: string): ExtractedFile {
+  return {
+    text: `[${kind} 文件：${name}。该附件已保存，可用于站内转换工具处理；当前 AI 文本预览不解析此格式。]`,
+    meta: {},
+  }
+}
+
 // ─── 主入口 ──────────────────────────────────────────────────────────
 
 export async function extractText(
@@ -259,9 +277,24 @@ export async function extractText(
     return withTimeout(extractDocx(buffer), EXTRACT_TIMEOUT_MS, "DOCX extraction")
   }
 
+  // Legacy Word can be converted by LibreOffice tools, but is not parsed for chat context.
+  if (DOC_MIMES.has(lowerMime) || /\.doc$/i.test(lowerName)) {
+    return extractOfficeAttachmentPlaceholder("Word", name)
+  }
+
   // XLSX
   if (XLSX_MIMES.has(lowerMime) || /\.xlsx$/i.test(lowerName)) {
     return withTimeout(extractXlsx(buffer), EXTRACT_TIMEOUT_MS, "XLSX extraction")
+  }
+
+  // Legacy Excel can be converted by LibreOffice tools, but is not parsed for chat context.
+  if (XLS_MIMES.has(lowerMime) || /\.xls$/i.test(lowerName)) {
+    return extractOfficeAttachmentPlaceholder("Excel", name)
+  }
+
+  // PPT/PPTX are accepted as tool inputs. Text extraction can be added later if needed.
+  if (PPT_MIMES.has(lowerMime) || /\.pptx?$/i.test(lowerName)) {
+    return extractOfficeAttachmentPlaceholder("PPT", name)
   }
 
   // 普通文本

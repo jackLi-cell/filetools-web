@@ -1,6 +1,6 @@
-import { PrismaClient } from "@prisma/client"
+import { Prisma, PrismaClient } from "@prisma/client"
 
-type CreditPrisma = Pick<PrismaClient, "processTask" | "creditTransaction" | "user">
+type RefundPrisma = PrismaClient | Prisma.TransactionClient
 
 export async function deductTaskCredits(
   prisma: PrismaClient,
@@ -15,27 +15,43 @@ export async function deductTaskCredits(
   if (amount <= 0) return
 
   await prisma.$transaction(async (tx) => {
+    const existingSpend = await tx.creditTransaction.findFirst({
+      where: { taskId, source: "tool_use", type: "spend" },
+      select: { id: true },
+    })
+    if (existingSpend) return
+
+    const deduction = await tx.user.updateMany({
+      where: {
+        id: userId,
+        credits: { gte: amount },
+      },
+      data: {
+        credits: { decrement: amount },
+        totalSpent: { increment: amount },
+      },
+    })
+    if (deduction.count === 0) {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { credits: true },
+      })
+      if (!user) throw new Error("用户不存在")
+      throw new Error(`余额不足（需要 ${amount} 积分，当前 ${user.credits}）`)
+    }
+
     const user = await tx.user.findUnique({
       where: { id: userId },
       select: { credits: true },
     })
     if (!user) throw new Error("用户不存在")
-    if (user.credits < amount) throw new Error("积分不足")
 
-    const nextBalance = user.credits - amount
-    await tx.user.update({
-      where: { id: userId },
-      data: {
-        credits: nextBalance,
-        totalSpent: { increment: amount },
-      },
-    })
     await tx.creditTransaction.create({
       data: {
         userId,
         type: "spend",
         amount: -amount,
-        balanceAfter: nextBalance,
+        balanceAfter: user.credits,
         source: "tool_use",
         toolSlug,
         taskId,
@@ -46,53 +62,62 @@ export async function deductTaskCredits(
 }
 
 export async function refundTaskCredits(
-  prisma: CreditPrisma,
+  prisma: RefundPrisma,
   taskId: string,
   note = "任务处理失败，自动退还积分",
 ) {
-  const task = await prisma.processTask.findUnique({
-    where: { id: taskId },
-    select: { id: true, userId: true, toolSlug: true, creditsCost: true },
-  })
-  if (!task?.userId || task.creditsCost <= 0) return false
+  const run = async (tx: Prisma.TransactionClient) => {
+    const task = await tx.processTask.findUnique({
+      where: { id: taskId },
+      select: { id: true, userId: true, toolSlug: true, creditsCost: true },
+    })
+    if (!task?.userId || task.creditsCost <= 0) return false
 
-  const existingSpend = await prisma.creditTransaction.findFirst({
-    where: { taskId, source: "tool_use", type: "spend" },
-    select: { id: true },
-  })
-  if (!existingSpend) return false
+    const existingSpend = await tx.creditTransaction.findFirst({
+      where: { taskId, source: "tool_use", type: "spend" },
+      select: { id: true },
+    })
+    if (!existingSpend) return false
 
-  const existingRefund = await prisma.creditTransaction.findFirst({
-    where: { taskId, source: "refund" },
-    select: { id: true },
-  })
-  if (existingRefund) return false
+    const existingRefund = await tx.creditTransaction.findFirst({
+      where: { taskId, source: "refund" },
+      select: { id: true },
+    })
+    if (existingRefund) return false
 
-  const user = await prisma.user.findUnique({
-    where: { id: task.userId },
-    select: { credits: true },
-  })
-  if (!user) return false
+    const refundResult = await tx.user.updateMany({
+      where: { id: task.userId },
+      data: {
+        credits: { increment: task.creditsCost },
+        totalSpent: { decrement: task.creditsCost },
+      },
+    })
+    if (refundResult.count === 0) return false
 
-  const nextBalance = user.credits + task.creditsCost
-  await prisma.user.update({
-    where: { id: task.userId },
-    data: {
-      credits: nextBalance,
-      totalSpent: { decrement: task.creditsCost },
-    },
-  })
-  await prisma.creditTransaction.create({
-    data: {
-      userId: task.userId,
-      type: "refund",
-      amount: task.creditsCost,
-      balanceAfter: nextBalance,
-      source: "refund",
-      toolSlug: task.toolSlug,
-      taskId,
-      note,
-    },
-  })
-  return true
+    const user = await tx.user.findUnique({
+      where: { id: task.userId },
+      select: { credits: true },
+    })
+    if (!user) return false
+
+    await tx.creditTransaction.create({
+      data: {
+        userId: task.userId,
+        type: "refund",
+        amount: task.creditsCost,
+        balanceAfter: user.credits,
+        source: "refund",
+        toolSlug: task.toolSlug,
+        taskId,
+        note,
+      },
+    })
+    return true
+  }
+
+  if ("$transaction" in prisma) {
+    return prisma.$transaction((tx) => run(tx))
+  }
+
+  return run(prisma)
 }

@@ -1,0 +1,100 @@
+{
+  "site": {
+    "name": "CatConvert",
+    "title": "CatConvert - Online File Processing Toolbox",
+    "description": "Free online file processing tools: image compression, PDF conversion, Office document conversion, video compression, QR code generator, format conversion and 50+ practical tools. Most processed locally in browser, no software installation needed.",
+    "keywords": "online tools,image compression,PDF conversion,Word to PDF,video compression,QR code generator,format conversion,file processing,CatConvert"
+  },
+  "nav": {
+    "home": "Home",
+    "allTools": "All Tools",
+    "pricing": "Pricing",
+    "login": "Login",
+    "register": "Sign Up",
+    "logout": "Logout",
+    "logoutFull": "Sign Out",
+    "credits": "Credits",
+    "recharge": "Top Up",
+    "account": "Account"
+  },
+  "home": {
+    "heroTitle": "CatConvert - Tell me what you need",
+    "heroDesc": "Upload files, ask questions, or request conversions - I'll pick the right tool automatically",
+    "categories": "Tool Categories",
+    "popular": "Popular Tools",
+    "viewAll": "View All →",
+    "free": "Free",
+    "privacyTitle": "Privacy & Security",
+    "privacyDesc": "Most tools process files locally in your browser. Files never leave your device. Server-processed files are deleted immediately after completion.",
+    "instantTitle": "Ready to Use",
+    "instantDesc": "No downloads or installations needed. Open your browser and start working. Works on desktop and mobile.",
+    "freeTitle": "Mostly Free",
+    "freeDesc": "29 basic tools are completely free with unlimited use. Advanced tools cost a small amount of credits per use. 100 free credits on signup."
+  },
+  "tools": {
+    "allTools": "All Tools",
+    "allToolsDesc": "Browse all image, PDF, video, audio, Markdown, developer and other online tools by category.",
+    "totalTools": "{count} tools available, organized by category",
+    "free": "Free",
+    "credits": "{count} Credits",
+    "creditsPerUse": "{count} Credits/use",
+    "local": "Local",
+    "toolsAvailable": "{count} tools available",
+    "comingSoon": "Tools in this category are under development. Stay tuned.",
+    "relatedTools": "Related Tools",
+    "instructions": "How to Use",
+    "scenarios": "Use Cases",
+    "notes": "Notes",
+    "faq": "FAQ",
+    "localNote": "This tool processes files locally in your browser. No files are uploaded to any server.",
+    "serverNote": "Files are deleted from the server immediately after processing. Result files are automatically cleaned up after 2 hours.",
+    "defaultSteps": [
+      "Select or drag files to the area above.",
+      "Adjust parameters as needed.",
+      "Click the process button and download the result when complete."
+    ],
+    "defaultStepsServer": [
+      "Select or drag files to the area above.",
+      "Adjust parameters as needed.",
+      "Click the process button and download the result after server processing."
+    ]
+  },
+  "langSwitcher": {
+    "label": "Language",
+    "zh-CN": "中文",
+    "en": "English"
+  },
+  "footer": {
+    "description": "CatConvert is a free online file processing toolbox supporting image compression, PDF conversion, Office document conversion, video processing and 50+ practical tools. Most tools process locally in browser without uploading files to servers.",
+    "toolCategories": "Tool Categories",
+    "moreCategories": "More Categories",
+    "about": "About",
+    "aboutUs": "About Us",
+    "contactUs": "Contact Us",
+    "privacy": "Privacy Policy",
+    "disclaimer": "Disclaimer",
+    "copyright": "Files processed locally in browser, not uploaded to servers.",
+    "contactEmail": "Contact Email"
+  },
+  "breadcrumb": {
+    "home": "Home"
+  },
+  "notFound": {
+    "title": "Page Not Found",
+    "description": "The page you are looking for does not exist or has been removed.",
+    "backHome": "Back to Home"
+  },
+  "categories": {
+    "image": { "name": "Image Tools", "description": "Compress, convert, crop, resize" },
+    "pdf": { "name": "PDF Tools", "description": "Convert, merge, split, compress, encrypt" },
+    "convert": { "name": "Document Conversion", "description": "Word, Excel, PPT format conversion" },
+    "video": { "name": "Video Tools", "description": "Compress, convert, trim, to GIF" },
+    "audio": { "name": "Audio Tools", "description": "Convert, compress, trim, merge" },
+    "markdown": { "name": "Markdown", "description": "Preview, to HTML, to PDF" },
+    "dev": { "name": "Developer Tools", "description": "JSON, regex, timestamp, encoding" },
+    "qrcode": { "name": "QR Code Tools", "description": "Generate, decode, barcode" },
+    "text": { "name": "Text Tools", "description": "Word count, deduplicate, case convert" },
+    "security": { "name": "File Security", "description": "Hash check, metadata removal" },
+    "signature": { "name": "E-Signature", "description": "Handwritten signature, insert to PDF" }
+  }
+}

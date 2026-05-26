@@ -4,23 +4,48 @@ import type { UIMessage } from "@ai-sdk/ui-utils"
 import { Markdown } from "@/components/ai/markdown"
 import { ToolCallCard } from "@/components/ai/tool-call-card"
 import { DownloadFileCard } from "@/components/ai/download-file-card"
+import { ProcessTaskCard } from "@/components/ai/process-task-card"
 import { cn } from "@/lib/utils"
 
 export interface MessageBubbleProps {
   role: "user" | "assistant"
   message?: UIMessage
-  /** Plain text fallback when only `content` is available. */
   content?: string
   isStreaming?: boolean
 }
 
-interface OpenToolArgs {
+interface ToolInvocationLike {
+  toolName?: unknown
+  toolCallId?: unknown
+  args?: unknown
+  result?: unknown
+  state?: unknown
+}
+
+interface ToolResultLike {
+  kind?: unknown
   slug?: unknown
-  params?: Record<string, unknown>
+  toolName?: unknown
+  reason?: unknown
+  params?: unknown
+  message?: unknown
+  taskId?: unknown
+  creditsCost?: unknown
+  fileCount?: unknown
+  inputFileName?: unknown
+  resultText?: unknown
   attachmentId?: unknown
   signedToken?: unknown
   expiresAt?: unknown
-  reason?: unknown
+  attachmentName?: unknown
+  attachmentMime?: unknown
+  status?: unknown
+  url?: unknown
+  downloadUrl?: unknown
+  fileName?: unknown
+  files?: unknown
+  file?: unknown
+  href?: unknown
 }
 
 function asString(v: unknown): string | undefined {
@@ -31,6 +56,10 @@ function asNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined
 }
 
+function asRecord(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === "object" ? (v as Record<string, unknown>) : undefined
+}
+
 function getFileName(data: string, mimeType?: string): string {
   const mime = (mimeType || "").toLowerCase()
   const ext =
@@ -38,23 +67,23 @@ function getFileName(data: string, mimeType?: string): string {
       ? "docx"
       : mime.includes("presentationml.presentation")
         ? "pptx"
-      : mime.includes("markdown")
-        ? "md"
-        : mime.includes("plain")
-          ? "txt"
-          : mime.includes("html")
-            ? "html"
-            : mime.includes("json")
-              ? "json"
-      : mime.includes("csv")
-        ? "csv"
-        : mime.includes("png")
-          ? "png"
-          : mime.includes("jpeg")
-            ? "jpg"
-            : mime.includes("webp")
-              ? "webp"
-        : mimeType?.split("/").pop()?.replace("plain", "txt") || "file"
+        : mime.includes("markdown")
+          ? "md"
+          : mime.includes("plain")
+            ? "txt"
+            : mime.includes("html")
+              ? "html"
+              : mime.includes("json")
+                ? "json"
+                : mime.includes("csv")
+                  ? "csv"
+                  : mime.includes("png")
+                    ? "png"
+                    : mime.includes("jpeg")
+                      ? "jpg"
+                      : mime.includes("webp")
+                        ? "webp"
+                        : mimeType?.split("/").pop()?.replace("plain", "txt") || "file"
   return `灵猫生成文件.${ext}`
 }
 
@@ -72,10 +101,6 @@ function getMessageText(msg: UIMessage | undefined, fallback?: string): string {
       .join("")
   }
   return msg.content ?? fallback ?? ""
-}
-
-function asRecord(v: unknown): Record<string, unknown> | undefined {
-  return v && typeof v === "object" ? (v as Record<string, unknown>) : undefined
 }
 
 function getToolResultFiles(result: unknown): Array<{ name: string; url: string; mimeType?: string }> {
@@ -108,6 +133,94 @@ function getToolResultFiles(result: unknown): Array<{ name: string; url: string;
       },
     ]
   })
+}
+
+function parseToolResult(value: unknown): ToolResultLike | null {
+  const root = asRecord(value)
+  if (!root) return null
+  return root as ToolResultLike
+}
+
+function renderAiToolResult(result: ToolResultLike, key: string) {
+  const kind = asString(result.kind)
+  if (kind === "process_task") {
+    return (
+      <ProcessTaskCard
+        key={key}
+        toolSlug={asString(result.slug) ?? asString(result.toolName) ?? "tool"}
+        taskId={asString(result.taskId) ?? ""}
+        title={asString(result.toolName)}
+        description={asString(result.message)}
+        creditsCost={asNumber(result.creditsCost)}
+        fileCount={asNumber(result.fileCount)}
+      />
+    )
+  }
+  if (kind === "inline_result") {
+    const text = asString(result.resultText) ?? asString(result.message) ?? ""
+    return (
+      <div key={key} className="space-y-2 rounded-xl border border-gray-200 bg-gray-50/70 p-3">
+        <div className="text-sm font-medium text-gray-900">{asString(result.toolName) ?? "工具结果"}</div>
+        <Markdown content={text} />
+      </div>
+    )
+  }
+  if (kind === "redirect") {
+    return (
+      <ToolCallCard
+        key={key}
+        slug={asString(result.slug) ?? ""}
+        params={asRecord(result.params) ?? undefined}
+        attachmentId={asString(result.attachmentId)}
+        signedToken={asString(result.signedToken)}
+        expiresAt={asNumber(result.expiresAt)}
+        reason={asString(result.reason) ?? asString(result.message)}
+      />
+    )
+  }
+  if (kind === "error") {
+    const status = asNumber(result.status)
+    const message = asString(result.message) ?? "执行失败"
+    const isBalanceError =
+      status === 402 ||
+      /余额不足|积分不足/.test(message)
+    if (isBalanceError) {
+      return (
+        <div key={key} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <div className="font-medium text-amber-900">{asString(result.toolName) ?? "工具"} 需要付费</div>
+          <div className="mt-1">{message}</div>
+          <div className="mt-1 text-[11px] text-amber-700">请先前往充值后再继续使用该工具。</div>
+        </div>
+      )
+    }
+    return (
+      <div key={key} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        {asString(result.toolName) ?? "工具"}：{message}
+      </div>
+    )
+  }
+
+  const fileCards = getToolResultFiles(result)
+  if (fileCards.length > 0) {
+    return (
+      <div key={key} className="space-y-2">
+        {fileCards.map((file, fileIndex) => (
+          <DownloadFileCard
+            key={`${file.url}-${fileIndex}`}
+            name={file.name}
+            url={file.url}
+            mimeType={file.mimeType}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div key={key} className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2 text-xs text-gray-600">
+      工具结果：<code className="font-mono text-gray-800">{asString(result.toolName) ?? "unknown"}</code>
+    </div>
+  )
 }
 
 export function MessageBubble({ role, message, content, isStreaming }: MessageBubbleProps) {
@@ -156,7 +269,6 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
     )
   }
 
-  // assistant: render parts in order, mixing markdown text and tool-call cards
   const parts = message?.parts ?? []
   const hasParts = parts.length > 0
   const fallbackText = !hasParts ? message?.content ?? content ?? "" : ""
@@ -181,7 +293,7 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
 
         {!hasParts && fallbackText ? <Markdown content={fallbackText} /> : null}
 
-        {hasParts &&
+          {hasParts &&
           parts.map((part, i) => {
             if (part.type === "text") {
               const textPart = part as { type: "text"; text: string }
@@ -199,40 +311,37 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
                 />
               )
             }
-            if (part.type === "tool-invocation") {
-              const inv = (part as {
-                type: "tool-invocation"
-                toolInvocation: {
-                  toolName: string
-                  args?: unknown
-                  result?: unknown
-                  state?: string
-                }
-              }).toolInvocation
-              if (inv.toolName === "open_tool") {
-                const args = (inv.args ?? {}) as OpenToolArgs
-                const result = (inv.result ?? {}) as OpenToolArgs & {
-                  signedToken?: unknown
-                  expiresAt?: unknown
-                }
-                const slug = asString(args.slug) ?? asString(result.slug)
+            const partType = (part as { type?: string }).type
+            if (partType === "tool-invocation" || partType === "tool_call") {
+              const rawPart = part as Record<string, unknown>
+              const inv =
+                (rawPart.toolInvocation as ToolInvocationLike | undefined) ??
+                (rawPart.toolCall as ToolInvocationLike | undefined) ??
+                (rawPart as unknown as ToolInvocationLike)
+              const toolName = asString(inv.toolName)
+              const args = asRecord(inv.args)
+              const result = parseToolResult(inv.result)
+
+              if (result) {
+                return renderAiToolResult(result, `tool-result-${i}`)
+              }
+
+              if (toolName === "open_tool") {
+                const slug = asString(args?.slug)
                 if (!slug) return null
-                const params =
-                  (result.params && typeof result.params === "object"
-                    ? (result.params as Record<string, unknown>)
-                    : undefined) ??
-                  (args.params && typeof args.params === "object"
-                    ? (args.params as Record<string, unknown>)
-                    : undefined)
-                // signedToken / expiresAt 必须从 result 取（execute 注入），args 里没有
-                const signedToken =
-                  asString(result.signedToken) ?? asString(args.signedToken)
-                const expiresAt =
-                  asNumber(result.expiresAt) ?? asNumber(args.expiresAt)
+                const params = asRecord(args?.params)
                 const attachmentId =
-                  asString(result.attachmentId) ?? asString(args.attachmentId)
+                  asString(args?.attachmentId) ??
+                  asString(asRecord(inv?.result)?.attachmentId)
+                const signedToken =
+                  asString(asRecord(inv?.result)?.signedToken) ??
+                  asString(args?.signedToken)
+                const expiresAt =
+                  asNumber(asRecord(inv?.result)?.expiresAt) ??
+                  asNumber(args?.expiresAt)
                 const reason =
-                  asString(result.reason) ?? asString(args.reason)
+                  asString(asRecord(inv?.result)?.reason) ??
+                  asString(args?.reason)
                 return (
                   <ToolCallCard
                     key={`tool-${i}`}
@@ -245,7 +354,16 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
                   />
                 )
               }
-              const fileCards = getToolResultFiles(inv.result)
+
+              if (toolName === "execute_tool") {
+                return (
+                  <div key={`tool-exec-${i}`} className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2 text-xs text-gray-600">
+                    工具正在执行：<code className="font-mono text-gray-800">{toolName}</code>
+                  </div>
+                )
+              }
+
+              const fileCards = getToolResultFiles(inv?.result)
               if (fileCards.length > 0) {
                 return (
                   <div key={`tool-files-${i}`} className="space-y-2">
@@ -260,13 +378,13 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
                   </div>
                 )
               }
-              // other tools: render minimal note
+
               return (
                 <div
                   key={`tool-${i}`}
                   className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2 text-xs text-gray-600"
                 >
-                  调用工具 <code className="font-mono text-gray-800">{inv.toolName}</code>
+                  调用工具 <code className="font-mono text-gray-800">{toolName || "unknown"}</code>
                 </div>
               )
             }
@@ -279,7 +397,6 @@ export function MessageBubble({ role, message, content, isStreaming }: MessageBu
             aria-hidden="true"
           />
         ) : null}
-
       </div>
     </div>
   )

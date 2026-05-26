@@ -23,10 +23,18 @@ function isLocalHost(host: string) {
   return host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".local")
 }
 
+function isIpHost(host: string) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(":")
+}
+
 function deriveApiBaseUrl(siteUrl: string): string | null {
   try {
     const parsed = new URL(siteUrl)
     const host = parsed.hostname.replace(/^www\./, "")
+
+    if (isIpHost(host)) {
+      return parsed.origin
+    }
 
     if (isLocalHost(host)) {
       return null
@@ -45,6 +53,14 @@ export function getApiBaseUrl(): string {
   const explicitBaseUrl = explicit ? normalizeBaseUrl(explicit) : ""
   const explicitHost = explicitBaseUrl ? getHostname(explicitBaseUrl) : null
   const isProduction = process.env.NODE_ENV === "production"
+
+  if (typeof window !== "undefined") {
+    const runtimeHost = getHostname(window.location.origin)
+    const runtimeUrl = deriveApiBaseUrl(window.location.origin)
+    if (runtimeUrl && runtimeHost && isIpHost(runtimeHost)) {
+      return runtimeUrl
+    }
+  }
 
   if (explicitBaseUrl && explicitHost?.startsWith("api.")) {
     return explicitBaseUrl

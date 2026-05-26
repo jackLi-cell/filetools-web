@@ -14,6 +14,9 @@ const storageDriver = process.env.STORAGE_DRIVER === "cos" ? "cos" : "local"
 const defaultStorageRoot = process.env.NODE_ENV === "production"
   ? (storageDriver === "cos" ? "/lhcos-data/cattools" : "/opt/filetools/storage")
   : "./storage"
+const sessionCookieSecure = process.env.SESSION_COOKIE_SECURE === undefined
+  ? process.env.NODE_ENV === "production"
+  : process.env.SESSION_COOKIE_SECURE !== "false"
 
 const DEFAULT_AI_SYSTEM_PROMPT = `你是"灵猫助手"，一个专为本工具站用户提供文件处理建议与文档问答的 AI 助手。
 
@@ -33,6 +36,7 @@ export const env = {
   databaseUrl: process.env.DATABASE_URL || "",
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
   sessionSecret: process.env.SESSION_SECRET || "dev-secret",
+  sessionCookieSecure,
   storage: {
     driver: storageDriver,
     root: process.env.STORAGE_ROOT || defaultStorageRoot,

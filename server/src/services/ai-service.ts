@@ -1,4 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai"
+import { randomUUID } from "node:crypto"
 import {
   formatDataStreamPart,
   pipeDataStreamToResponse,
@@ -20,6 +21,7 @@ import {
 } from "./ai-upstream-manager.js"
 import { attachmentStore, type StoredAttachment } from "./attachment-store.js"
 import { buildTools, buildToolsCatalog, buildAttachmentsHint } from "./tool-registry.js"
+import { executeToolThroughHarness, inferToolRequestFromText, buildHarnessInstruction, type ToolHarnessResult } from "./tool-harness.js"
 import {
   buildOutputFileInstruction,
   createGeneratedFile,
@@ -54,6 +56,7 @@ export interface StreamChatParams {
   messages: CoreMessage[]
   abortSignal?: AbortSignal
   userId?: number
+  ipAddress?: string
   attachmentOwnerKey?: string
   /**
    * 用户附带的附件 id 列表（来自 POST /api/ai/attach 的返回）。
@@ -316,7 +319,8 @@ function createUpstreamError(message: string, opts: {
   return err
 }
 
-function messageContentToText(content: CoreMessage["content"]): string {
+function messageContentToText(content: CoreMessage["content"] | undefined): string {
+  if (content == null) return ""
   if (typeof content === "string") return content
   if (Array.isArray(content)) {
     return content
@@ -509,11 +513,15 @@ function createManualDataStream(
   chunks: string[],
   usage: { promptTokens: number; completionTokens: number; totalTokens: number },
   sendFinish: boolean,
+  extraParts: DataStreamString[] = [],
 ): ReadableStream<DataStreamString> {
   return new ReadableStream<DataStreamString>({
     async start(controller) {
       try {
         await enqueueTextChunks((part) => controller.enqueue(part), chunks)
+        for (const part of extraParts) {
+          controller.enqueue(part)
+        }
         controller.enqueue(formatDataStreamPart("finish_step", {
           finishReason: "stop",
           usage,
@@ -536,9 +544,10 @@ function createManualEncodedDataStream(
   chunks: string[],
   usage: { promptTokens: number; completionTokens: number; totalTokens: number },
   sendFinish: boolean,
+  extraParts: DataStreamString[] = [],
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
-  return createManualDataStream(chunks, usage, sendFinish).pipeThrough(
+  return createManualDataStream(chunks, usage, sendFinish, extraParts).pipeThrough(
     new TransformStream<DataStreamString, Uint8Array>({
       transform(part, controller) {
         controller.enqueue(encoder.encode(part))
@@ -550,6 +559,7 @@ function createManualEncodedDataStream(
 function createManualTextResult(
   text: string,
   usage: { promptTokens: number; completionTokens: number; totalTokens: number },
+  extraParts: DataStreamString[] = [],
 ): StreamTextResult<ToolSet, never> {
   const chunks = splitManualStreamText(text)
   const streamDurationMs = Math.max(0, chunks.length - 1) * MANUAL_STREAM_CHUNK_DELAY_MS
@@ -590,6 +600,9 @@ function createManualTextResult(
             await sleep(MANUAL_STREAM_CHUNK_DELAY_MS)
           }
         }
+        for (const part of extraParts) {
+          controller.enqueue({ type: "data", data: part } as unknown as never)
+        }
         controller.enqueue({
           type: "finish",
           finishReason: "stop",
@@ -607,13 +620,13 @@ function createManualTextResult(
     }) as unknown as StreamTextResult<ToolSet, never>["experimental_partialOutputStream"],
     consumeStream: async () => undefined,
     toDataStream: (options?: Parameters<StreamTextResult<ToolSet, never>["toDataStream"]>[0]) => {
-      return createManualEncodedDataStream(chunks, usage, options?.experimental_sendFinish !== false)
+      return createManualEncodedDataStream(chunks, usage, options?.experimental_sendFinish !== false, extraParts)
     },
     mergeIntoDataStream: (
       dataStream: Parameters<StreamTextResult<ToolSet, never>["mergeIntoDataStream"]>[0],
       options?: Parameters<StreamTextResult<ToolSet, never>["mergeIntoDataStream"]>[1],
     ) => {
-      dataStream.merge(createManualDataStream(chunks, usage, options?.experimental_sendFinish !== false))
+      dataStream.merge(createManualDataStream(chunks, usage, options?.experimental_sendFinish !== false, extraParts))
     },
     pipeDataStreamToResponse(
       response: import("http").ServerResponse,
@@ -623,6 +636,9 @@ function createManualTextResult(
         ...options,
         execute: async (writer) => {
           await enqueueTextChunks((part) => writer.write(part), chunks)
+          for (const part of extraParts) {
+            writer.write(part)
+          }
           writer.write(formatDataStreamPart("finish_step", {
             finishReason: "stop",
             usage,
@@ -686,6 +702,75 @@ function createSyntheticTextResult(text: string): StreamTextResult<ToolSet, neve
     totalTokens: Math.ceil(text.length / 2),
   }
   return createManualTextResult(text, usage)
+}
+
+function createToolResultParts(
+  toolName: string,
+  args: Record<string, unknown>,
+  result: ToolHarnessResult,
+): DataStreamString[] {
+  const toolCallId = `tool_${randomUUID().slice(0, 8)}`
+  return [
+    formatDataStreamPart("tool_call_streaming_start", {
+      toolCallId,
+      toolName,
+    }),
+    formatDataStreamPart("tool_call", {
+      toolCallId,
+      toolName,
+      args,
+    }),
+    formatDataStreamPart("tool_result", {
+      toolCallId,
+      result,
+    }),
+  ]
+}
+
+async function tryExecuteDirectToolRequest(opts: {
+  messages: CoreMessage[]
+  attachments: StoredAttachment[]
+  userId?: number
+  ipAddress?: string
+  attachmentOwnerKey?: string
+}): Promise<StreamTextResult<ToolSet, never> | null> {
+  const lastUser = [...opts.messages].reverse().find((message) => message.role === "user")
+  const lastUserText = messageContentToText(lastUser?.content)
+  const request = inferToolRequestFromText(lastUserText, opts.attachments)
+  if (!request) return null
+
+  const result = await executeToolThroughHarness(
+    {
+      slug: request.slug,
+      reason: request.reason,
+      params: request.params,
+      attachmentId: request.attachmentId,
+    },
+    {
+      attachments: opts.attachments,
+      userId: opts.userId,
+      ipAddress: opts.ipAddress,
+    },
+  )
+
+  const toolName = result.kind === "redirect" ? "open_tool" : "execute_tool"
+  const args = {
+    slug: request.slug,
+    reason: request.reason,
+    params: request.params ?? {},
+    attachmentId: request.attachmentId ?? undefined,
+  }
+  const extraParts = createToolResultParts(toolName, args, result)
+  const text =
+    result.kind === "inline_result"
+      ? result.resultText || result.message
+      : result.message
+  const usage = {
+    promptTokens: Math.max(1, Math.ceil(lastUserText.length / 4)),
+    completionTokens: Math.max(1, Math.ceil(text.length / 4)),
+    totalTokens: Math.max(1, Math.ceil((lastUserText.length + text.length) / 4)),
+  }
+  return createManualTextResult(text, usage, extraParts)
 }
 
 function wrapResultWithGeneratedFile(
@@ -1016,7 +1101,7 @@ async function tryResponsesGenerate(opts: {
 export async function streamChat(
   params: StreamChatParams,
 ): Promise<StreamTextResult<ToolSet, never>> {
-  const { messages, abortSignal, userId, attachmentIds, attachmentOwnerKey } = params
+  const { messages, abortSignal, userId, ipAddress, attachmentIds, attachmentOwnerKey } = params
   const isAuth = typeof userId === "number"
   const generatedFileRequest = detectAiOutputFileRequest(messages)
 
@@ -1044,6 +1129,16 @@ export async function streamChat(
   const { textAttachments, imageAttachments } = splitAttachments(attachments)
   const hasImageAttachments = imageAttachments.length > 0
   const messagesWithAttachments = injectAttachmentsIntoMessages(messages, textAttachments)
+  const directToolResult = await tryExecuteDirectToolRequest({
+    messages: messagesWithAttachments,
+    attachments,
+    userId,
+    ipAddress,
+    attachmentOwnerKey,
+  })
+  if (directToolResult) {
+    return wrapResultWithGeneratedFile(directToolResult, generatedFileRequest)
+  }
 
   // 2) 组装 system prompt（基础 + 工具目录 + 附件清单）
   const toolsCatalog = buildToolsCatalog()
@@ -1054,7 +1149,7 @@ export async function streamChat(
   const visionInstruction = hasImageAttachments
     ? "\n用户本轮上传了图片附件。若当前上游支持视觉，请直接识别图片内容并回答；不要声称无法看图。"
     : ""
-  const systemPrompt = `${baseSystemPrompt}\n\n${toolsCatalog}${attachmentsHint}${outputFileInstruction}${visionInstruction}`
+  const systemPrompt = `${baseSystemPrompt}\n\n${toolsCatalog}${attachmentsHint}${outputFileInstruction}${buildHarnessInstruction()}${visionInstruction}`
 
   // 3) 总长度截断（system 不参与，messages 历史按 maxContextChars 截断）
   const truncated = truncateMessages(messagesWithAttachments, env.ai.maxContextChars)
@@ -1092,6 +1187,9 @@ export async function streamChat(
         messages: truncated,
         imageAttachments,
         allowedAttachmentIds,
+        userId,
+        ipAddress,
+        attachmentOwnerKey,
         abortSignal,
       })
 
@@ -1318,9 +1416,22 @@ async function tryStream(opts: {
   messages: CoreMessage[]
   imageAttachments?: StoredAttachment[]
   allowedAttachmentIds?: Set<string>
+  userId?: number
+  ipAddress?: string
+  attachmentOwnerKey?: string
   abortSignal?: AbortSignal
 }): Promise<StreamTextResult<ToolSet, never>> {
-  const { upstream, systemPrompt, messages, imageAttachments = [], allowedAttachmentIds = new Set(), abortSignal } = opts
+  const {
+    upstream,
+    systemPrompt,
+    messages,
+    imageAttachments = [],
+    allowedAttachmentIds = new Set(),
+    userId,
+    ipAddress,
+    attachmentOwnerKey,
+    abortSignal,
+  } = opts
 
   // 入参摘要（API key 脱敏）
   const lastUser = messages.slice().reverse().find((m) => m.role === "user")
@@ -1363,7 +1474,7 @@ async function tryStream(opts: {
     model: selected.model,
     system: systemPrompt,
     temperature: 0.5,
-    tools: buildTools(allowedAttachmentIds),
+    tools: buildTools(allowedAttachmentIds, userId, ipAddress, attachmentOwnerKey),
     maxSteps: 3,
     messages: modelMessages,
     maxTokens: env.ai.maxOutputTokens,

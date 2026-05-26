@@ -3,11 +3,14 @@ import { PrismaClient } from "@prisma/client"
 import { randomUUID } from "crypto"
 import { z } from "zod"
 import { createStorageReadStream, ensureStorageRoot, getDownloadUrl, getUploadUrl, getFileSize, writeBufferToStorage } from "../config/storage.js"
-import { processQueue } from "../config/queue.js"
 import { redis } from "../config/redis.js"
 import { uploadLimiter } from "../middleware/rate-limit.js"
 import { validateFileParams } from "../middleware/upload-validate.js"
-import { deductTaskCredits, refundTaskCredits } from "../services/credits.js"
+import {
+  ProcessTaskError,
+  sanitizeFileName,
+  submitProcessTask,
+} from "../services/process-task-service.js"
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -18,21 +21,6 @@ const uploadSchema = z.object({
   fileSize: z.number().positive().max(100 * 1024 * 1024),
   toolSlug: z.string().min(1),
 })
-
-function sanitizeFileName(fileName: string): string {
-  const normalized = fileName
-    .replace(/[\u0000-\u001F\u007F]/g, "")
-    .replace(/[\\/]+/g, "_")
-    .replace(/\.\.+/g, ".")
-    .trim()
-  const base = normalized.split(/[\\/]/).pop() || "upload"
-  const safe = base.replace(/[^\p{L}\p{N}._ -]/gu, "_").replace(/^\.+/, "").slice(0, 120)
-  return safe || "upload"
-}
-
-function fileKeyBelongsToTool(fileKey: string, toolSlug: string): boolean {
-  return fileKey.startsWith(`uploads/${toolSlug}/`) && !fileKey.includes("..")
-}
 
 function asciiFallbackFileName(fileName: string): string {
   const clean = sanitizeFileName(fileName).replace(/["\r\n]/g, "_")
@@ -55,19 +43,19 @@ function absoluteUrl(req: Request, value: string): string {
   return `${req.protocol}://${req.get("host")}${value}`
 }
 
-async function getSessionUser(req: Request): Promise<{ id: number; credits: number } | null> {
+async function getSessionUserId(req: Request): Promise<number | undefined> {
   const token = req.cookies?.session_token
-  if (!token) return null
+  if (!token) return undefined
 
   const session = await prisma.session.findUnique({
     where: { id: token },
-    include: { user: { select: { id: true, credits: true, status: true } } },
+    include: { user: { select: { id: true, status: true } } },
   })
   if (!session || session.expiresAt < new Date() || session.user.status === "banned") {
     if (session && session.expiresAt < new Date()) await prisma.session.delete({ where: { id: token } })
-    return null
+    return undefined
   }
-  return { id: session.user.id, credits: session.user.credits }
+  return session.user.id
 }
 
 router.post("/upload", uploadLimiter, async (req: Request, res: Response) => {
@@ -158,8 +146,6 @@ const processSchema = z.object({
   params: z.record(z.unknown()).optional(),
 })
 
-const MULTI_FILE_TOOLS = new Set(["pdf-merge", "image-to-pdf"])
-
 router.post("/:toolSlug", async (req: Request, res: Response) => {
   const toolSlug = req.params.toolSlug as string
   const parsed = processSchema.safeParse(req.body)
@@ -168,152 +154,36 @@ router.post("/:toolSlug", async (req: Request, res: Response) => {
     return
   }
 
-  const tool = await prisma.toolConfig.findUnique({ where: { toolSlug } })
-  if (!tool || !tool.enabled) {
-    res.status(404).json({ code: 404, message: "工具不存在" })
-    return
-  }
   const rawFiles = parsed.data.files?.length ? parsed.data.files : [{
     fileKey: parsed.data.fileKey,
     fileName: parsed.data.fileName,
     fileSize: parsed.data.fileSize,
   }]
-
-  if (rawFiles.length > 1 && !MULTI_FILE_TOOLS.has(toolSlug)) {
-    res.status(400).json({ code: 400, message: "该工具暂不支持多文件上传" })
-    return
-  }
-  if (toolSlug === "pdf-merge" && rawFiles.length < 2) {
-    res.status(400).json({ code: 400, message: "PDF 合并至少需要 2 个 PDF 文件" })
-    return
-  }
-
-  const inputFiles = rawFiles.map((file) => ({
-    fileKey: file.fileKey,
-    fileName: sanitizeFileName(file.fileName),
-    fileSize: file.fileSize,
+  const files = rawFiles.map((file) => ({
+    ...file,
+    contentType: "application/octet-stream",
   }))
-  let totalSize = 0
-  for (const inputFile of inputFiles) {
-    if (!fileKeyBelongsToTool(inputFile.fileKey, toolSlug)) {
-      res.status(400).json({ code: 400, message: "文件上传凭证与工具不匹配" })
-      return
-    }
-    const fileValidationError = validateFileParams(
-      inputFile.fileName,
-      "application/octet-stream",
-      inputFile.fileSize,
-      tool.maxFileSizeMb,
-    )
-    if (fileValidationError && !fileValidationError.startsWith("不支持的文件格式")) {
-      res.status(400).json({ code: 400, message: fileValidationError })
-      return
-    }
-    totalSize += inputFile.fileSize
-  }
-  const inputFileName = inputFiles.length === 1 ? inputFiles[0].fileName : `${inputFiles.length} files`
 
   const ip = (req.ip || "unknown") as string
-  const categoryPaymentSetting = await prisma.categoryPaymentSetting.findUnique({
-    where: { category: tool.category },
-  })
-  const paidEnabled = categoryPaymentSetting?.paidEnabled === true
-  let effectiveCreditsCost = paidEnabled && !tool.isFree ? tool.creditsCost : 0
-  const effectiveDailyFreeRegistered = paidEnabled ? tool.dailyFreeRegistered : 0
-  const currentUser = await getSessionUser(req)
-
-  if (effectiveCreditsCost > 0 && !currentUser) {
-    res.status(401).json({ code: 401, message: "该工具需要登录后使用" })
-    return
-  }
-
-  if (effectiveCreditsCost > 0 && currentUser && effectiveDailyFreeRegistered > 0) {
-    const usageKey = `usage:user:${currentUser.id}:${toolSlug}:${new Date().toISOString().slice(0, 10)}`
-    const used = await redis.incr(usageKey)
-    if (used === 1) await redis.expire(usageKey, 86400)
-    if (used <= effectiveDailyFreeRegistered) {
-      effectiveCreditsCost = 0
-    }
-  }
-
-  if (effectiveCreditsCost > 0 && currentUser && currentUser.credits < effectiveCreditsCost) {
-    res.status(402).json({ code: 402, message: `积分不足（需要 ${effectiveCreditsCost} 积分，当前 ${currentUser.credits}）` })
-    return
-  }
-
-  const taskId = randomUUID()
-  const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000)
-
-  const taskParams = {
-    ...((parsed.data.params as Record<string, unknown> | undefined) || {}),
-    __inputFiles: inputFiles.map((file) => ({ fileKey: file.fileKey, fileName: file.fileName })),
-  }
-
-  await prisma.processTask.create({
-    data: {
-      id: taskId,
+  try {
+    const userId = await getSessionUserId(req)
+    const task = await submitProcessTask({
       toolSlug,
-      status: "pending",
-      inputFileKey: inputFiles[0].fileKey,
-      inputFileName,
-      inputFileSize: BigInt(totalSize),
-      params: taskParams as any,
-      userId: currentUser?.id,
-      creditsCost: effectiveCreditsCost,
+      files,
+      params: parsed.data.params || {},
+      userId,
       ipAddress: ip,
-      expiresAt,
-    },
-  })
-
-  if (currentUser && effectiveCreditsCost > 0) {
-    try {
-      await deductTaskCredits(prisma, {
-        userId: currentUser.id,
-        toolSlug,
-        taskId,
-        amount: effectiveCreditsCost,
-      })
-    } catch (error) {
-      await prisma.processTask.update({
-        where: { id: taskId },
-        data: {
-          status: "failed",
-          errorMessage: error instanceof Error ? error.message : "积分扣除失败",
-          completedAt: new Date(),
-        },
-      })
-      res.status(402).json({ code: 402, message: error instanceof Error ? error.message : "积分扣除失败" })
+    })
+    res.json({ code: 0, data: { taskId: task.taskId } })
+  } catch (error) {
+    if (error instanceof ProcessTaskError) {
+      res.status(error.status).json({ code: error.code, message: error.message })
       return
     }
-  }
-
-  try {
-    await processQueue.add(toolSlug, {
-      taskId,
-      toolSlug,
-      inputFileKey: inputFiles[0].fileKey,
-      inputFileName,
-      inputFiles: inputFiles.map((file) => ({ fileKey: file.fileKey, fileName: file.fileName })),
-      params: parsed.data.params || {},
-    })
-  } catch (error) {
-    await prisma.$transaction(async (tx) => {
-      await tx.processTask.update({
-        where: { id: taskId },
-        data: {
-          status: "failed",
-          errorMessage: "任务入队失败，请稍后重试",
-          completedAt: new Date(),
-        },
-      })
-      await refundTaskCredits(tx, taskId)
-    })
     const message = error instanceof Error ? error.message : "任务提交失败"
     res.status(500).json({ code: 500, message })
     return
   }
-
-  res.json({ code: 0, data: { taskId } })
 })
 
 router.get("/status/:taskId", async (req: Request, res: Response) => {

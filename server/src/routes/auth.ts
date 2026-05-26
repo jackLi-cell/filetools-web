@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client"
 import { randomBytes } from "crypto"
 import { z } from "zod"
 import { redis } from "../config/redis.js"
+import { env } from "../config/env.js"
 import { authLimiter } from "../middleware/rate-limit.js"
 
 let argon2: typeof import("argon2")
@@ -93,7 +94,7 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
 
   res.cookie("session_token", token, {
     httpOnly: true,
-    secure: true,
+    secure: env.sessionCookieSecure,
     sameSite: "strict",
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
@@ -159,7 +160,7 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
 
   res.cookie("session_token", token, {
     httpOnly: true,
-    secure: true,
+    secure: env.sessionCookieSecure,
     sameSite: "strict",
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",

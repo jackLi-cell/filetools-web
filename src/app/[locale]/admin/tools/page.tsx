@@ -18,8 +18,6 @@ interface ToolConfig {
   enabled: boolean
   isFree: boolean
   creditsCost: number
-  dailyFreeAnonymous: number
-  dailyFreeRegistered: number
   maxFileSizeMb: number
 }
 
@@ -153,8 +151,6 @@ export default function AdminToolsPage() {
                     <th className="text-center px-3 py-2 font-medium text-gray-600">启用</th>
                     <th className="text-center px-3 py-2 font-medium text-gray-600">免费</th>
                     <th className="text-center px-3 py-2 font-medium text-gray-600">积分</th>
-                    <th className="text-center px-3 py-2 font-medium text-gray-600">匿名免费/天</th>
-                    <th className="text-center px-3 py-2 font-medium text-gray-600">注册免费/天</th>
                     <th className="text-center px-3 py-2 font-medium text-gray-600">最大MB</th>
                     <th className="text-right px-3 py-2 font-medium text-gray-600">操作</th>
                   </tr>
@@ -173,12 +169,6 @@ export default function AdminToolsPage() {
                         </td>
                         <td className="px-3 py-2">
                           <Input type="number" value={getValue(tool, "creditsCost")} onChange={(e) => updateField(tool.toolSlug, "creditsCost", Number(e.target.value))} className="h-8 text-xs w-16 mx-auto" disabled={tool.isFree} />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input type="number" value={getValue(tool, "dailyFreeAnonymous")} onChange={(e) => updateField(tool.toolSlug, "dailyFreeAnonymous", Number(e.target.value))} className="h-8 text-xs w-16 mx-auto" />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input type="number" value={getValue(tool, "dailyFreeRegistered")} onChange={(e) => updateField(tool.toolSlug, "dailyFreeRegistered", Number(e.target.value))} className="h-8 text-xs w-16 mx-auto" />
                         </td>
                         <td className="px-3 py-2">
                           <Input type="number" value={getValue(tool, "maxFileSizeMb")} onChange={(e) => updateField(tool.toolSlug, "maxFileSizeMb", Number(e.target.value))} className="h-8 text-xs w-16 mx-auto" />

@@ -127,7 +127,7 @@ export default async function PricingPage() {
         </div>
 
         <div className="mt-5 p-4 bg-blue-50 rounded-lg text-xs text-blue-800">
-          💡 <strong>使用规则</strong>：免费工具无需登录；需要积分的工具请先登录，若后台配置了注册用户每日免费次数，将优先使用免费次数。
+          💡 <strong>使用规则</strong>：免费工具无需登录；需要积分的工具请先登录后使用，余额充足时会自动扣除对应积分。
         </div>
       </Card>
 

@@ -6,28 +6,37 @@ import { categories } from "@/config/tools"
 import { AiHero } from "@/components/ai/ai-hero"
 import { siteConfig } from "@/config/site"
 import { fetchTools } from "@/lib/tools-service"
+import { getDictionary } from "@/i18n/get-dictionary"
+import type { Locale } from "@/i18n/config"
 
 export const dynamic = "force-dynamic"
 export const runtime = "edge"
 
-export const metadata: Metadata = {
-  alternates: {
-    canonical: siteConfig.url,
-  },
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params
+  return {
+    alternates: {
+      canonical: `${siteConfig.url}/${locale}`,
+    },
+  }
 }
 
-export default async function HomePage() {
+export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params
+  const dict = await getDictionary(locale as Locale)
   const popularTools = (await fetchTools()).slice(0, 8)
+  const prefix = `/${locale}`
+
   return (
     <div className="home-page flex flex-col" data-page="home">
       <section className="home-ai-shell border-b bg-gradient-to-b from-blue-50/50 to-white py-12 md:py-20">
         <div className="container mx-auto px-4">
           <div className="ai-landing-copy text-center mb-8 md:mb-10">
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
-              灵猫助手 · 告诉我你要做什么
+              {dict.home.heroTitle}
             </h1>
             <p className="text-base text-gray-600 max-w-xl mx-auto">
-              上传文件、提问、或要求转换 — 我会自动选择合适的工具
+              {dict.home.heroDesc}
             </p>
           </div>
           <AiHero />
@@ -36,15 +45,19 @@ export default async function HomePage() {
 
       <section className="home-after-ai py-12 md:py-16">
         <div className="container mx-auto px-4">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">工具分类</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">{dict.home.categories}</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
             {categories.map((cat) => (
-              <Link key={cat.slug} href={`/tools/${cat.slug}`}>
+              <Link key={cat.slug} href={`${prefix}/tools/${cat.slug}`}>
                 <Card className="h-full hover:shadow-md transition-shadow cursor-pointer border-gray-200">
                   <CardHeader className="p-4">
                     <div className="text-2xl mb-2">{cat.icon}</div>
-                    <CardTitle className="text-sm font-medium">{cat.name}</CardTitle>
-                    <CardDescription className="text-xs">{cat.description}</CardDescription>
+                    <CardTitle className="text-sm font-medium">
+                      {dict.categories[cat.slug as keyof typeof dict.categories]?.name || cat.name}
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      {dict.categories[cat.slug as keyof typeof dict.categories]?.description || cat.description}
+                    </CardDescription>
                   </CardHeader>
                 </Card>
               </Link>
@@ -56,21 +69,21 @@ export default async function HomePage() {
       <section className="home-after-ai py-12 md:py-16 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">热门工具</h2>
-            <Link href="/tools" className="text-sm text-blue-600 hover:text-blue-700">
-              查看全部 →
+            <h2 className="text-xl font-semibold text-gray-900">{dict.home.popular}</h2>
+            <Link href={`${prefix}/tools`} className="text-sm text-blue-600 hover:text-blue-700">
+              {dict.home.viewAll}
             </Link>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {popularTools.map((tool) => (
-              <Link key={tool.slug} href={`/tools/${tool.category}/${tool.slug}`}>
+              <Link key={tool.slug} href={`${prefix}/tools/${tool.category}/${tool.slug}`}>
                 <Card className="h-full hover:shadow-md transition-shadow cursor-pointer">
                   <CardHeader className="p-4">
                     <div className="flex items-center justify-between mb-1">
                       <CardTitle className="text-sm font-medium">{tool.name}</CardTitle>
                       {tool.isFree && (
                         <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
-                          免费
+                          {dict.home.free}
                         </Badge>
                       )}
                     </div>
@@ -88,18 +101,18 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center p-6">
               <div className="text-3xl mb-3">🔒</div>
-              <h3 className="text-sm font-medium text-gray-900 mb-2">隐私安全</h3>
-              <p className="text-xs text-gray-500">大部分工具在浏览器本地处理，文件不离开你的设备。需要服务器处理的文件，处理完成后立即删除。</p>
+              <h3 className="text-sm font-medium text-gray-900 mb-2">{dict.home.privacyTitle}</h3>
+              <p className="text-xs text-gray-500">{dict.home.privacyDesc}</p>
             </div>
             <div className="text-center p-6">
               <div className="text-3xl mb-3">⚡</div>
-              <h3 className="text-sm font-medium text-gray-900 mb-2">即开即用</h3>
-              <p className="text-xs text-gray-500">无需下载安装任何软件，打开浏览器即可使用。支持电脑和手机。</p>
+              <h3 className="text-sm font-medium text-gray-900 mb-2">{dict.home.instantTitle}</h3>
+              <p className="text-xs text-gray-500">{dict.home.instantDesc}</p>
             </div>
             <div className="text-center p-6">
               <div className="text-3xl mb-3">🎯</div>
-              <h3 className="text-sm font-medium text-gray-900 mb-2">免费为主</h3>
-              <p className="text-xs text-gray-500">29 个基础工具完全免费、无限使用。高级工具按次消耗少量积分，注册即送 100 积分。</p>
+              <h3 className="text-sm font-medium text-gray-900 mb-2">{dict.home.freeTitle}</h3>
+              <p className="text-xs text-gray-500">{dict.home.freeDesc}</p>
             </div>
           </div>
         </div>

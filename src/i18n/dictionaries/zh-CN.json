@@ -1,0 +1,100 @@
+{
+  "site": {
+    "name": "灵猫转换",
+    "title": "灵猫转换 CatConvert - 在线文件处理工具箱",
+    "description": "免费在线文件处理工具：图片压缩、PDF 转换、Office 文档转换、视频压缩、二维码生成、格式转换等 50+ 实用工具，大部分在浏览器本地处理，无需安装软件。",
+    "keywords": "在线工具,图片压缩,PDF转换,Word转PDF,视频压缩,二维码生成,格式转换,文件处理,灵猫转换,CatConvert"
+  },
+  "nav": {
+    "home": "首页",
+    "allTools": "全部工具",
+    "pricing": "定价",
+    "login": "登录",
+    "register": "注册",
+    "logout": "退出",
+    "logoutFull": "退出登录",
+    "credits": "积分",
+    "recharge": "充值",
+    "account": "个人中心"
+  },
+  "home": {
+    "heroTitle": "灵猫助手 · 告诉我你要做什么",
+    "heroDesc": "上传文件、提问、或要求转换 — 我会自动选择合适的工具",
+    "categories": "工具分类",
+    "popular": "热门工具",
+    "viewAll": "查看全部 →",
+    "free": "免费",
+    "privacyTitle": "隐私安全",
+    "privacyDesc": "大部分工具在浏览器本地处理，文件不离开你的设备。需要服务器处理的文件，处理完成后立即删除。",
+    "instantTitle": "即开即用",
+    "instantDesc": "无需下载安装任何软件，打开浏览器即可使用。支持电脑和手机。",
+    "freeTitle": "免费为主",
+    "freeDesc": "29 个基础工具完全免费、无限使用。高级工具按次消耗少量积分，注册即送 100 积分。"
+  },
+  "tools": {
+    "allTools": "全部工具",
+    "allToolsDesc": "全部工具列表，按分类浏览所有图片、PDF、视频、音频、Markdown、开发者等在线工具。",
+    "totalTools": "共 {count} 个工具，按分类整理",
+    "free": "免费",
+    "credits": "{count} 积分",
+    "creditsPerUse": "{count} 积分/次",
+    "local": "本地处理",
+    "toolsAvailable": "共 {count} 个工具可用",
+    "comingSoon": "该分类下的工具正在开发中，敬请期待。",
+    "relatedTools": "相关工具",
+    "instructions": "使用说明",
+    "scenarios": "适合场景",
+    "notes": "注意事项",
+    "faq": "常见问题",
+    "localNote": "本工具在浏览器本地处理，文件不会上传到任何服务器。",
+    "serverNote": "文件处理完成后立即从服务器删除，结果文件 2 小时后自动清理。",
+    "defaultSteps": [
+      "选择或拖拽文件到上方区域。",
+      "根据需要调整参数设置。",
+      "点击处理按钮，等待完成后下载结果。"
+    ],
+    "defaultStepsServer": [
+      "选择或拖拽文件到上方区域。",
+      "根据需要调整参数设置。",
+      "点击处理按钮，等待服务器处理完成后下载结果文件。"
+    ]
+  },
+  "langSwitcher": {
+    "label": "语言",
+    "zh-CN": "中文",
+    "en": "English"
+  },
+  "footer": {
+    "description": "灵猫转换（CatConvert）是一个免费在线文件处理工具箱，支持图片压缩、PDF 转换、Office 文档转换、视频处理等 50+ 实用工具。大部分工具在浏览器本地处理，文件不上传服务器。",
+    "toolCategories": "工具分类",
+    "moreCategories": "更多分类",
+    "about": "关于",
+    "aboutUs": "关于我们",
+    "contactUs": "联系我们",
+    "privacy": "隐私政策",
+    "disclaimer": "免责声明",
+    "copyright": "文件在浏览器本地处理，不上传服务器。",
+    "contactEmail": "联系邮箱"
+  },
+  "breadcrumb": {
+    "home": "首页"
+  },
+  "notFound": {
+    "title": "页面未找到",
+    "description": "您访问的页面不存在或已被移除。",
+    "backHome": "返回首页"
+  },
+  "categories": {
+    "image": { "name": "图片处理", "description": "压缩、格式转换、裁剪、缩放" },
+    "pdf": { "name": "PDF 工具", "description": "转换、合并、拆分、压缩、加密" },
+    "convert": { "name": "文档转换", "description": "Word、Excel、PPT 格式互转" },
+    "video": { "name": "视频处理", "description": "压缩、格式转换、截取、转 GIF" },
+    "audio": { "name": "音频处理", "description": "格式转换、压缩、裁剪、合并" },
+    "markdown": { "name": "Markdown", "description": "预览、转 HTML、转 PDF" },
+    "dev": { "name": "开发者工具", "description": "JSON、正则、时间戳、编码" },
+    "qrcode": { "name": "二维码工具", "description": "生成、识别、条形码" },
+    "text": { "name": "文本工具", "description": "字数统计、去重、大小写转换" },
+    "security": { "name": "文件安全", "description": "哈希校验、元数据清除" },
+    "signature": { "name": "电子签名", "description": "手写签名、插入 PDF" }
+  }
+}

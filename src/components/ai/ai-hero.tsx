@@ -74,7 +74,7 @@ function describeAttachError(err: FileAttachError): string {
     case "total-exceeded":
       return "附件总大小已超过 30MB 限制"
     case "mime-rejected":
-      return `暂不支持 ${err.file.name}。AI 附件支持图片、文本、PDF、DOCX、XLSX、CSV/JSON 等文件`
+      return `暂不支持 ${err.file.name}。AI 附件支持图片、文本、PDF、Word、Excel、PPT、CSV/JSON 等文件`
   }
 }
 

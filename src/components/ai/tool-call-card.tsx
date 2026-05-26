@@ -1,10 +1,11 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { categories, getToolBySlug } from "@/config/tools"
 import { prefillToolSession } from "@/lib/ai-client"
+import { i18n } from "@/i18n/config"
 
 export interface ToolCallCardProps {
   /** Tool slug returned by the model. */
@@ -24,18 +25,21 @@ export interface ToolCallCardProps {
 }
 
 function categoryFor(slug: string): string {
-  const tool = getToolBySlug(slug)
+  const normalized = slug === "image-metadata-clear" ? "image-exif" : slug
+  const tool = getToolBySlug(normalized)
   return tool?.category ?? "tools"
 }
 
-function toolHrefFor(slug: string): string {
-  const tool = getToolBySlug(slug)
-  if (!tool) return `/tools`
-  return `/tools/${tool.category}/${tool.slug}?prefill=1`
+function toolHrefFor(slug: string, localePrefix: string): string {
+  const normalized = slug === "image-metadata-clear" ? "image-exif" : slug
+  const tool = getToolBySlug(normalized)
+  if (!tool) return `${localePrefix}/tools`
+  return `${localePrefix}/tools/${tool.category}/${tool.slug}?prefill=1`
 }
 
 function categoryIconFor(slug: string): string {
-  const tool = getToolBySlug(slug)
+  const normalized = slug === "image-metadata-clear" ? "image-exif" : slug
+  const tool = getToolBySlug(normalized)
   if (!tool) return "🛠️"
   const category = categories.find((c) => c.slug === tool.category)
   return category?.icon ?? "🛠️"
@@ -51,7 +55,13 @@ export function ToolCallCard({
   onOpen,
 }: ToolCallCardProps) {
   const router = useRouter()
-  const tool = getToolBySlug(slug)
+  const pathname = usePathname()
+  const segments = pathname.split("/")
+  const localePrefix = segments[1] && i18n.locales.includes(segments[1] as typeof i18n.locales[number])
+    ? `/${segments[1]}`
+    : `/${i18n.defaultLocale}`
+  const normalizedSlug = slug === "image-metadata-clear" ? "image-exif" : slug
+  const tool = getToolBySlug(normalizedSlug)
   const displayName = tool?.name ?? slug
   const description = tool?.description
   const icon = categoryIconFor(slug)
@@ -65,14 +75,14 @@ export function ToolCallCard({
       return
     }
     prefillToolSession({
-      slug,
+      slug: normalizedSlug,
       attachmentId,
       signedToken,
       params,
       // default 30 minute window aligns with attachment TTL
       expiresAt: expiresAt ?? Date.now() + 30 * 60 * 1000,
     })
-    router.push(toolHrefFor(slug))
+    router.push(toolHrefFor(normalizedSlug, localePrefix))
   }
 
   return (

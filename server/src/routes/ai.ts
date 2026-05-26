@@ -58,7 +58,7 @@ function getAnonymousAttachmentToken(req: Request, res?: Response): string {
     res.cookie(ANON_ATTACHMENT_COOKIE, token, {
       httpOnly: true,
       sameSite: "lax",
-      secure: env.nodeEnv === "production",
+      secure: env.sessionCookieSecure,
       maxAge: env.ai.attachmentTtlSec * 1000,
       path: "/",
     })
@@ -70,6 +70,14 @@ function getAttachmentOwnerKey(req: Request, res?: Response): string {
   const userId = (req as { userId?: number }).userId
   if (typeof userId === "number") return `user:${userId}`
   return `anon:${getAnonymousAttachmentToken(req, res)}`
+}
+
+function getClientIp(req: Request): string {
+  const forwarded = req.headers["x-forwarded-for"]
+  if (typeof forwarded === "string" && forwarded.trim()) {
+    return forwarded.split(",")[0]?.trim() || req.ip || "unknown"
+  }
+  return req.ip || "unknown"
 }
 
 /**
@@ -128,6 +136,7 @@ router.post("/chat", softAuth, checkAiEnabled, aiRateLimit, async (req: Request,
       attachmentOwnerKey,
       abortSignal: controller.signal,
       userId,
+      ipAddress: getClientIp(req),
     })
 
     // 流式写出（Vercel AI SDK 4 的 data stream 协议）

@@ -11,7 +11,7 @@ export interface CategoryPaymentSetting {
 export const defaultCategoryPaymentSettings: CategoryPaymentSetting[] = categories.map((category) => ({
   category: category.slug,
   name: category.name,
-  paidEnabled: false,
+  paidEnabled: ["image", "pdf", "convert", "video", "audio", "markdown", "qrcode", "security", "signature"].includes(category.slug),
 }))
 
 export function applyCategoryPaymentSettings(

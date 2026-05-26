@@ -289,7 +289,7 @@ router.put("/category-payment-settings/:category", async (req: Request, res: Res
 
 router.put("/tools-config/:slug", async (req: Request, res: Response) => {
   const slug = req.params.slug as string
-  const { enabled, creditsCost, dailyFreeAnonymous, dailyFreeRegistered, maxFileSizeMb } = req.body
+  const { enabled, creditsCost, maxFileSizeMb } = req.body
 
   const tool = await prisma.toolConfig.findUnique({ where: { toolSlug: slug } })
   if (!tool) { res.status(404).json({ code: 404, message: "工具不存在" }); return }
@@ -299,8 +299,6 @@ router.put("/tools-config/:slug", async (req: Request, res: Response) => {
     data: {
       ...(enabled !== undefined && { enabled }),
       ...(creditsCost !== undefined && { creditsCost }),
-      ...(dailyFreeAnonymous !== undefined && { dailyFreeAnonymous }),
-      ...(dailyFreeRegistered !== undefined && { dailyFreeRegistered }),
       ...(maxFileSizeMb !== undefined && { maxFileSizeMb }),
       updatedBy: (req as any).userId,
     },

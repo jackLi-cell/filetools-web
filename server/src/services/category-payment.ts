@@ -14,6 +14,8 @@ const categoryNames: Record<string, string> = {
   signature: "电子签名",
 }
 
+const defaultPaidCategories = new Set(["image", "pdf", "convert", "video", "audio", "markdown", "qrcode", "security", "signature"])
+
 export async function ensureCategoryPaymentSettings(prisma: PrismaClient) {
   const [tools, settings] = await Promise.all([
     prisma.toolConfig.findMany({ select: { category: true }, distinct: ["category"] }),
@@ -30,7 +32,7 @@ export async function ensureCategoryPaymentSettings(prisma: PrismaClient) {
       data: missingCategories.map((category) => ({
         category,
         name: categoryNames[category] || category,
-        paidEnabled: false,
+        paidEnabled: defaultPaidCategories.has(category),
       })),
       skipDuplicates: true,
     })

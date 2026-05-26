@@ -1,6 +1,7 @@
 import { MetadataRoute } from "next"
 import { siteConfig } from "@/config/site"
 import { tools } from "@/config/tools"
+import { i18n } from "@/i18n/config"
 
 // Only include high-search-volume tools in sitemap for better crawl efficiency
 const HIGH_VALUE_TOOLS = new Set([
@@ -56,30 +57,41 @@ const HIGH_VALUE_CATEGORIES = new Set([
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = siteConfig.url
+  const locales = i18n.locales
 
-  const staticPages = [
-    { url: baseUrl, lastModified: new Date(), changeFrequency: "weekly" as const, priority: 1 },
-    { url: `${baseUrl}/pages/about`, lastModified: new Date(), changeFrequency: "monthly" as const, priority: 0.5 },
-    { url: `${baseUrl}/pages/contact`, lastModified: new Date(), changeFrequency: "monthly" as const, priority: 0.5 },
-    { url: `${baseUrl}/pages/privacy`, lastModified: new Date(), changeFrequency: "monthly" as const, priority: 0.4 },
-    { url: `${baseUrl}/pages/disclaimer`, lastModified: new Date(), changeFrequency: "monthly" as const, priority: 0.4 },
-  ]
+  const entries: MetadataRoute.Sitemap = []
 
-  const categoryPages = [...HIGH_VALUE_CATEGORIES].map(slug => ({
-    url: `${baseUrl}/tools/${slug}`,
-    lastModified: new Date(),
-    changeFrequency: "weekly" as const,
-    priority: 0.8,
-  }))
+  for (const locale of locales) {
+    const prefix = `${baseUrl}/${locale}`
 
-  const toolPages = tools
-    .filter(t => t.version === "v0.1" && HIGH_VALUE_TOOLS.has(t.slug))
-    .map(tool => ({
-      url: `${baseUrl}/tools/${tool.category}/${tool.slug}`,
-      lastModified: new Date(),
-      changeFrequency: "monthly" as const,
-      priority: 0.7,
-    }))
+    entries.push(
+      { url: prefix, lastModified: new Date(), changeFrequency: "weekly" as const, priority: 1 },
+      { url: `${prefix}/pages/about`, lastModified: new Date(), changeFrequency: "monthly" as const, priority: 0.5 },
+      { url: `${prefix}/pages/contact`, lastModified: new Date(), changeFrequency: "monthly" as const, priority: 0.5 },
+      { url: `${prefix}/pages/privacy`, lastModified: new Date(), changeFrequency: "monthly" as const, priority: 0.4 },
+      { url: `${prefix}/pages/disclaimer`, lastModified: new Date(), changeFrequency: "monthly" as const, priority: 0.4 },
+    )
 
-  return [...staticPages, ...categoryPages, ...toolPages]
+    for (const slug of HIGH_VALUE_CATEGORIES) {
+      entries.push({
+        url: `${prefix}/tools/${slug}`,
+        lastModified: new Date(),
+        changeFrequency: "weekly" as const,
+        priority: 0.8,
+      })
+    }
+
+    for (const tool of tools) {
+      if (tool.version === "v0.1" && HIGH_VALUE_TOOLS.has(tool.slug)) {
+        entries.push({
+          url: `${prefix}/tools/${tool.category}/${tool.slug}`,
+          lastModified: new Date(),
+          changeFrequency: "monthly" as const,
+          priority: 0.7,
+        })
+      }
+    }
+  }
+
+  return entries
 }

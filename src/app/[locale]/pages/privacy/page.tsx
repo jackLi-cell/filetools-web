@@ -84,7 +84,7 @@ export default function PrivacyPage() {
 
         <section>
           <h2 className="text-base font-semibold text-gray-900 mb-3">7. 第三方服务</h2>
-          <p>本站可能使用以下第三方服务：Cloudflare（CDN 加速和安全防护）、支付宝/微信支付（支付处理）、Cloudflare Turnstile（人机验证）、AI 服务上游（用于灵猫助手的对话与文档理解）。本站不对第三方服务的隐私政策负责。</p>
+          <p>本站可能使用以下第三方服务：腾讯云服务器与 Nginx（服务器托管和反向代理）、支付宝/微信支付（支付处理）、验证码服务（防机器人）、AI 服务上游（用于灵猫助手的对话与文档理解）。本站不对第三方服务的隐私政策负责。</p>
         </section>
 
         <section>

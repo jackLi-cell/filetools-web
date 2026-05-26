@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/auth-context"
 import { CategoryPaymentSetting } from "@/lib/payment-settings"
 import { consumePrefill, fetchAttachmentBlob } from "@/lib/ai-client"
 
+const DEFAULT_PAID_CATEGORIES = new Set(["image", "pdf", "convert", "video", "audio", "markdown", "qrcode", "security", "signature"])
+
 interface ServerToolProps {
   toolSlug: string
   accept?: string
@@ -34,6 +36,7 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
   const [task, setTask] = useState<TaskResult | null>(null)
   const [error, setError] = useState("")
   const [effectiveCreditsCost, setEffectiveCreditsCost] = useState(0)
+  const [effectiveMaxSizeMb, setEffectiveMaxSizeMb] = useState(maxSizeMb)
   const [params, setParams] = useState<Record<string, unknown>>(() => {
     const defaults: Record<string, unknown> = {}
     paramsSchema.forEach(p => { if (p.default !== undefined) defaults[p.name] = p.default })
@@ -51,9 +54,16 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
           creditsCost: number
           effectiveCreditsCost?: number
           effectiveIsFree?: boolean
+          maxFileSizeMb?: number
         }>(`/api/tools/${toolSlug}`)
 
         if (cancelled) return
+
+        if (toolRes.data?.maxFileSizeMb !== undefined) {
+          setEffectiveMaxSizeMb(toolRes.data.maxFileSizeMb)
+        } else {
+          setEffectiveMaxSizeMb(maxSizeMb)
+        }
 
         if (toolRes.data?.effectiveCreditsCost !== undefined) {
           setEffectiveCreditsCost(toolRes.data.effectiveCreditsCost)
@@ -65,7 +75,8 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
 
         const category = toolRes.data?.category
         const paidEnabled = settingsRes.data?.find((setting) => setting.category === category)?.paidEnabled === true
-        const nextCreditsCost = paidEnabled && !toolRes.data?.isFree
+        const categoryIsDefaultPaid = category ? DEFAULT_PAID_CATEGORIES.has(category) : false
+        const nextCreditsCost = (paidEnabled || categoryIsDefaultPaid) && !toolRes.data?.isFree
           ? (toolRes.data?.creditsCost ?? creditsCost)
           : 0
 
@@ -73,6 +84,7 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
       } catch {
         if (!cancelled) {
           setEffectiveCreditsCost(creditsCost)
+          setEffectiveMaxSizeMb(maxSizeMb)
         }
       }
     }
@@ -82,7 +94,7 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
     return () => {
       cancelled = true
     }
-  }, [creditsCost, toolSlug])
+  }, [creditsCost, maxSizeMb, toolSlug])
 
   const handleFiles = useCallback((incoming: File[]) => {
     const selected = incoming.filter(Boolean).slice(0, maxFiles)
@@ -91,15 +103,15 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
       setError(`最多只能上传 ${maxFiles} 个文件`)
       return
     }
-    const oversize = selected.find((f) => f.size > maxSizeMb * 1024 * 1024)
+    const oversize = selected.find((f) => f.size > effectiveMaxSizeMb * 1024 * 1024)
     if (oversize) {
-      setError(`${oversize.name} 超过 ${maxSizeMb}MB 限制`)
+      setError(`${oversize.name} 超过 ${effectiveMaxSizeMb}MB 限制`)
       return
     }
     setFiles(selected)
     setTask(null)
     setError("")
-  }, [maxFiles, maxSizeMb])
+  }, [effectiveMaxSizeMb, maxFiles])
 
   const handleFile = useCallback((f: File | null) => {
     if (!f) return
@@ -233,6 +245,9 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
   }
 
   const formatSize = (bytes: number) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`
+  const uploadLimitText = maxFiles > 1
+    ? `当前限制：最多 ${maxFiles} 个文件，单个最大 ${effectiveMaxSizeMb}MB`
+    : `当前限制：单个最大 ${effectiveMaxSizeMb}MB`
 
   const needLogin = effectiveCreditsCost > 0 && !user
   const insufficientCredits = user && effectiveCreditsCost > 0 && user.credits < effectiveCreditsCost
@@ -267,7 +282,10 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
           <>
             <div className="text-3xl mb-3">📁</div>
             <p className="text-sm text-gray-600 mb-1">拖拽文件到此处，或点击选择</p>
-            <p className="text-xs text-gray-400">{acceptHint || `最大 ${maxSizeMb}MB`}</p>
+            <div className="text-xs text-gray-400 space-y-1">
+              {acceptHint && <p>{acceptHint}</p>}
+              <p>{uploadLimitText}</p>
+            </div>
           </>
         )}
       </div>
@@ -305,7 +323,7 @@ export function ServerToolBase({ toolSlug, accept = "*/*", maxSizeMb = 30, maxFi
       {files.length > 0 && !task && (
         <>
           {needLogin && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 该工具需要登录后使用</div>}
-          {insufficientCredits && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 积分不足（需要 {effectiveCreditsCost} 积分，当前 {user!.credits}）</div>}
+          {insufficientCredits && <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">⚠️ 余额不足，请先充值后再试（需要 {effectiveCreditsCost} 积分，当前 {user!.credits}）</div>}
           <Button onClick={submit} disabled={uploading || !!insufficientCredits} className="w-full">
             {uploading ? "上传中..." : needLogin ? "登录后使用" : effectiveCreditsCost > 0 ? `开始处理（消耗 ${effectiveCreditsCost} 积分）` : "开始处理"}
           </Button>

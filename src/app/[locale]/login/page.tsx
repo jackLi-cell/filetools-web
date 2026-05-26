@@ -51,7 +51,7 @@ export default function LoginPage() {
     <div className="container mx-auto px-4 py-12 max-w-md">
       <Card className="p-6">
         <h1 className="text-xl font-semibold text-gray-900 mb-2">登录</h1>
-        <p className="text-sm text-gray-500 mb-6">登录后可使用更多免费次数和高级功能</p>
+        <p className="text-sm text-gray-500 mb-6">登录后可使用高级功能并管理账户积分</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import {
   Dialog,
   DialogContent,
@@ -14,12 +14,23 @@ import { Search } from "lucide-react"
 import { fetchTools } from "@/lib/tools-service"
 import { cn } from "@/lib/utils"
 import type { Tool } from "@/config/tools"
+import { i18n } from "@/i18n/config"
+
+function useLocalePrefix() {
+  const pathname = usePathname()
+  const segments = pathname.split("/")
+  const locale = segments[1] && i18n.locales.includes(segments[1] as typeof i18n.locales[number])
+    ? segments[1]
+    : i18n.defaultLocale
+  return `/${locale}`
+}
 
 export function HeaderToolSearch() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [tools, setTools] = useState<Tool[]>([])
   const router = useRouter()
+  const prefix = useLocalePrefix()
 
   useEffect(() => {
     let cancelled = false
@@ -66,9 +77,9 @@ export function HeaderToolSearch() {
   const handleSelect = useCallback(
     (category: string, slug: string) => {
       setOpen(false)
-      router.push(`/tools/${category}/${slug}`)
+      router.push(`${prefix}/tools/${category}/${slug}`)
     },
-    [router]
+    [router, prefix]
   )
 
   return (
@@ -167,6 +178,7 @@ export function MobileToolSearchTrigger({ onClose }: { onClose?: () => void }) {
   const [query, setQuery] = useState("")
   const [tools, setTools] = useState<Tool[]>([])
   const router = useRouter()
+  const prefix = useLocalePrefix()
 
   useEffect(() => {
     let cancelled = false
@@ -216,7 +228,7 @@ export function MobileToolSearchTrigger({ onClose }: { onClose?: () => void }) {
                     type="button"
                     onClick={() => {
                       onClose?.()
-                      router.push(`/tools/${tool.category}/${tool.slug}`)
+                      router.push(`${prefix}/tools/${tool.category}/${tool.slug}`)
                     }}
                     className="flex w-full items-center justify-between gap-2 border-b px-3 py-2 text-left last:border-b-0 hover:bg-gray-50"
                   >
