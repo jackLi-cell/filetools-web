@@ -4,9 +4,10 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { categories } from "@/config/tools"
 import { fetchTools } from "@/lib/tools-service"
-import { siteConfig } from "@/config/site"
 import { getDictionary } from "@/i18n/get-dictionary"
 import type { Locale } from "@/i18n/config"
+import { localizedSeoFromHeaders } from "@/lib/seo"
+import { localizeTools } from "@/lib/localized-tools"
 
 export const dynamic = "force-dynamic"
 export const runtime = "edge"
@@ -14,11 +15,13 @@ export const runtime = "edge"
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params
   const dict = await getDictionary(locale as Locale)
+  const seo = await localizedSeoFromHeaders(locale, "/tools")
   return {
     title: `${dict.tools.allTools} - 50+ ${dict.tools.allToolsDesc}`,
     description: dict.tools.allToolsDesc,
     alternates: {
-      canonical: `${siteConfig.url}/${locale}/tools`,
+      canonical: seo.canonical,
+      languages: seo.languages,
     },
   }
 }
@@ -26,7 +29,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 export default async function AllToolsPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   const dict = await getDictionary(locale as Locale)
-  const v01Tools = await fetchTools()
+  const v01Tools = localizeTools(await fetchTools(), locale)
   const prefix = `/${locale}`
 
   return (

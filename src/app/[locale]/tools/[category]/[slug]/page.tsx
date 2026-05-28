@@ -4,13 +4,13 @@ import { Metadata } from "next"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { getCategoryBySlug } from "@/config/tools"
-import { getToolSeo } from "@/config/seo"
-import { siteConfig } from "@/config/site"
 import { ToolRenderer } from "@/components/tools/tool-renderer"
 import { ToolDisclaimer } from "@/components/tool-disclaimer"
 import { fetchTools, getStaticToolBySlug, getToolBySlug } from "@/lib/tools-service"
 import { getDictionary } from "@/i18n/get-dictionary"
 import type { Locale } from "@/i18n/config"
+import { localizedSeoFromHeaders, localizedUrl, getSiteUrlFromCurrentHeaders } from "@/lib/seo"
+import { getLocalizedToolSeo, localizeTool, localizeTools } from "@/lib/localized-tools"
 
 export const runtime = "edge"
 export const dynamic = "force-dynamic"
@@ -18,24 +18,27 @@ export const dynamic = "force-dynamic"
 export async function generateMetadata({ params }: { params: Promise<{ locale: string; category: string; slug: string }> }): Promise<Metadata> {
   const { locale, slug } = await params
   const tool = await getToolBySlug(slug) || getStaticToolBySlug(slug)
-  const seo = getToolSeo(slug)
 
   if (!tool) return {}
 
-  const title = seo?.title || `${tool.name} - ${tool.description}`
-  const description = seo?.description || tool.description
+  const localizedTool = localizeTool(tool, locale)
+  const seo = getLocalizedToolSeo(slug, locale, tool)
+  const title = seo?.title || `${localizedTool.name} - ${localizedTool.description}`
+  const description = seo?.description || localizedTool.description
+  const pageSeo = await localizedSeoFromHeaders(locale, `/tools/${tool.category}/${tool.slug}`)
 
   return {
     title,
     description,
     keywords: seo?.keywords?.join(","),
     alternates: {
-      canonical: `${siteConfig.url}/${locale}/tools/${tool.category}/${tool.slug}`,
+      canonical: pageSeo.canonical,
+      languages: pageSeo.languages,
     },
     openGraph: {
       title,
       description,
-      url: `${siteConfig.url}/${locale}/tools/${tool.category}/${tool.slug}`,
+      url: pageSeo.canonical,
       type: "website",
     },
   }
@@ -44,14 +47,16 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 export default async function ToolPage({ params }: { params: Promise<{ locale: string; category: string; slug: string }> }) {
   const { locale, category: categorySlug, slug } = await params
   const dict = await getDictionary(locale as Locale)
-  const tool = await getToolBySlug(slug)
+  const baseUrl = await getSiteUrlFromCurrentHeaders()
+  const rawTool = await getToolBySlug(slug)
+  const tool = rawTool ? localizeTool(rawTool, locale) : undefined
   const category = getCategoryBySlug(categorySlug)
-  const seo = getToolSeo(slug)
+  const seo = rawTool ? getLocalizedToolSeo(slug, locale, rawTool) : undefined
   const prefix = `/${locale}`
 
   if (!tool || !category) notFound()
 
-  const allTools = await fetchTools()
+  const allTools = localizeTools(await fetchTools(), locale)
   const relatedTools = allTools
     .filter(t => t.category === tool.category && t.slug !== tool.slug && t.version === "v0.1")
     .slice(0, 4)
@@ -77,19 +82,19 @@ export default async function ToolPage({ params }: { params: Promise<{ locale: s
         "@type": "ListItem",
         "position": 1,
         "name": dict.breadcrumb.home,
-        "item": `${siteConfig.url}/${locale}`,
+        "item": localizedUrl(locale, "/", baseUrl),
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": catName,
-        "item": `${siteConfig.url}/${locale}/tools/${category.slug}`,
+        "item": localizedUrl(locale, `/tools/${category.slug}`, baseUrl),
       },
       {
         "@type": "ListItem",
         "position": 3,
         "name": seo?.h1 || tool.name,
-        "item": `${siteConfig.url}/${locale}/tools/${tool.category}/${tool.slug}`,
+        "item": localizedUrl(locale, `/tools/${tool.category}/${tool.slug}`, baseUrl),
       },
     ],
   }
@@ -99,7 +104,7 @@ export default async function ToolPage({ params }: { params: Promise<{ locale: s
     "@type": "WebApplication",
     "name": seo?.h1 || tool.name,
     "description": seo?.description || tool.description,
-    "url": `${siteConfig.url}/${locale}/tools/${tool.category}/${tool.slug}`,
+    "url": localizedUrl(locale, `/tools/${tool.category}/${tool.slug}`, baseUrl),
     "applicationCategory": "UtilityApplication",
     "operatingSystem": "Web",
     "offers": tool.isFree ? { "@type": "Offer", "price": "0", "priceCurrency": "CNY" } : undefined,

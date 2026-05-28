@@ -5,9 +5,10 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/ca
 import { Badge } from "@/components/ui/badge"
 import { categories } from "@/config/tools"
 import { getToolsByCategory } from "@/lib/tools-service"
-import { siteConfig } from "@/config/site"
 import { getDictionary } from "@/i18n/get-dictionary"
 import type { Locale } from "@/i18n/config"
+import { localizedSeoFromHeaders } from "@/lib/seo"
+import { localizeTools } from "@/lib/localized-tools"
 
 export const dynamic = "force-dynamic"
 export const runtime = "edge"
@@ -21,17 +22,19 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const catDict = dict.categories[categorySlug as keyof typeof dict.categories]
   const catName = catDict?.name || category.name
   const catDesc = catDict?.description || category.description
+  const seo = await localizedSeoFromHeaders(locale, `/tools/${category.slug}`)
 
   return {
     title: `${catName} - ${catDesc} | ${dict.site.name}`,
     description: `${catName}: ${catDesc}`,
     alternates: {
-      canonical: `${siteConfig.url}/${locale}/tools/${category.slug}`,
+      canonical: seo.canonical,
+      languages: seo.languages,
     },
     openGraph: {
       title: `${catName} - ${catDesc} | ${dict.site.name}`,
       description: `${catName}: ${catDesc}`,
-      url: `${siteConfig.url}/${locale}/tools/${category.slug}`,
+      url: seo.canonical,
       type: "website",
     },
   }
@@ -43,7 +46,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ local
   const category = categories.find(c => c.slug === categorySlug)
   if (!category) notFound()
 
-  const categoryTools = await getToolsByCategory(categorySlug)
+  const categoryTools = localizeTools(await getToolsByCategory(categorySlug), locale)
   const prefix = `/${locale}`
   const catDict = dict.categories[categorySlug as keyof typeof dict.categories]
   const catName = catDict?.name || category.name

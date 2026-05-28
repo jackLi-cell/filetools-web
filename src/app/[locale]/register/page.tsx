@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,10 @@ import { useAuth } from "@/lib/auth-context"
 
 export default function RegisterPage() {
   const router = useRouter()
+  const params = useParams()
   const { refresh } = useAuth()
+  const locale = typeof params?.locale === "string" ? params.locale : "zh-CN"
+  const prefix = `/${locale}`
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
@@ -28,7 +31,7 @@ export default function RegisterPage() {
       const res = await api.post("/api/auth/register", { email, password, name: name || undefined })
       if (res.code === 0) {
         await refresh()
-        router.push("/account")
+        router.push(`${prefix}/account`)
       } else {
         setError(res.message || "注册失败")
       }
@@ -62,9 +65,9 @@ export default function RegisterPage() {
             <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 rounded" />
             <span>
               我已阅读并同意
-              <Link href="/pages/privacy" target="_blank" className="text-blue-600 hover:underline mx-1">《隐私政策》</Link>
+              <Link href={`${prefix}/pages/privacy`} target="_blank" className="text-blue-600 hover:underline mx-1">《隐私政策》</Link>
               和
-              <Link href="/pages/disclaimer" target="_blank" className="text-blue-600 hover:underline mx-1">《免责声明》</Link>
+              <Link href={`${prefix}/pages/disclaimer`} target="_blank" className="text-blue-600 hover:underline mx-1">《免责声明》</Link>
             </span>
           </label>
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -72,7 +75,7 @@ export default function RegisterPage() {
         </form>
 
         <p className="text-sm text-gray-500 mt-6 text-center">
-          已有账号？<Link href="/login" className="text-blue-600 hover:underline">立即登录</Link>
+          已有账号？<Link href={`${prefix}/login`} className="text-blue-600 hover:underline">立即登录</Link>
         </p>
       </Card>
     </div>

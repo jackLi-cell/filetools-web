@@ -15,6 +15,7 @@ import { fetchTools } from "@/lib/tools-service"
 import { cn } from "@/lib/utils"
 import type { Tool } from "@/config/tools"
 import { i18n } from "@/i18n/config"
+import { localizeTools } from "@/lib/localized-tools"
 
 function useLocalePrefix() {
   const pathname = usePathname()
@@ -22,7 +23,7 @@ function useLocalePrefix() {
   const locale = segments[1] && i18n.locales.includes(segments[1] as typeof i18n.locales[number])
     ? segments[1]
     : i18n.defaultLocale
-  return `/${locale}`
+  return { locale, prefix: `/${locale}` }
 }
 
 export function HeaderToolSearch() {
@@ -30,13 +31,13 @@ export function HeaderToolSearch() {
   const [query, setQuery] = useState("")
   const [tools, setTools] = useState<Tool[]>([])
   const router = useRouter()
-  const prefix = useLocalePrefix()
+  const { locale, prefix } = useLocalePrefix()
 
   useEffect(() => {
     let cancelled = false
     fetchTools()
       .then((list) => {
-        if (!cancelled) setTools(list)
+        if (!cancelled) setTools(localizeTools(list, locale))
       })
       .catch(() => {
         if (!cancelled) setTools([])
@@ -44,7 +45,7 @@ export function HeaderToolSearch() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [locale])
 
   const results = useMemo(() => {
     if (!query.trim()) return []
@@ -88,8 +89,8 @@ export function HeaderToolSearch() {
         type="button"
         variant="ghost"
         size="icon"
-        aria-label="搜索工具"
-        title="搜索工具 (⌘K)"
+        aria-label={locale === "en" ? "Search tools" : "搜索工具"}
+        title={locale === "en" ? "Search tools (⌘K)" : "搜索工具 (⌘K)"}
         onClick={() => setOpen(true)}
       >
         <Search className="h-4 w-4" />
@@ -100,9 +101,9 @@ export function HeaderToolSearch() {
           className="top-[20%] max-w-xl translate-y-0 gap-3 p-0 sm:max-w-xl"
           showCloseButton={false}
         >
-          <DialogTitle className="sr-only">搜索工具</DialogTitle>
+          <DialogTitle className="sr-only">{locale === "en" ? "Search tools" : "搜索工具"}</DialogTitle>
           <DialogDescription className="sr-only">
-            输入关键字快速搜索网站上的工具
+            {locale === "en" ? "Type keywords to quickly find tools on this site" : "输入关键字快速搜索网站上的工具"}
           </DialogDescription>
 
           <div className="flex items-center gap-2 border-b px-3 py-2.5">
@@ -110,7 +111,7 @@ export function HeaderToolSearch() {
             <Input
               autoFocus
               type="search"
-              placeholder="搜索工具，如：图片压缩、PDF 合并、JSON 格式化..."
+              placeholder={locale === "en" ? "Search tools, such as image compressor, PDF merger, JSON formatter..." : "搜索工具，如：图片压缩、PDF 合并、JSON 格式化..."}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="h-8 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
@@ -123,11 +124,11 @@ export function HeaderToolSearch() {
           <div className="max-h-[60vh] overflow-y-auto px-1 pb-2">
             {!query.trim() ? (
               <p className="px-4 py-6 text-center text-xs text-gray-500">
-                输入关键词查找工具
+                {locale === "en" ? "Type keywords to find a tool" : "输入关键词查找工具"}
               </p>
             ) : results.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-gray-500">
-                未找到匹配的工具
+                {locale === "en" ? "No matching tools found" : "未找到匹配的工具"}
               </p>
             ) : (
               <ul className="flex flex-col">
@@ -151,11 +152,11 @@ export function HeaderToolSearch() {
                       </div>
                       {tool.isFree ? (
                         <span className="shrink-0 rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700">
-                          免费
+                          {locale === "en" ? "Free" : "免费"}
                         </span>
                       ) : (
                         <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
-                          {tool.creditsCost} 积分
+                          {locale === "en" ? `${tool.creditsCost} credits` : `${tool.creditsCost} 积分`}
                         </span>
                       )}
                     </button>
@@ -178,13 +179,13 @@ export function MobileToolSearchTrigger({ onClose }: { onClose?: () => void }) {
   const [query, setQuery] = useState("")
   const [tools, setTools] = useState<Tool[]>([])
   const router = useRouter()
-  const prefix = useLocalePrefix()
+  const { locale, prefix } = useLocalePrefix()
 
   useEffect(() => {
     let cancelled = false
     fetchTools()
       .then((list) => {
-        if (!cancelled) setTools(list)
+        if (!cancelled) setTools(localizeTools(list, locale))
       })
       .catch(() => {
         if (!cancelled) setTools([])
@@ -192,7 +193,7 @@ export function MobileToolSearchTrigger({ onClose }: { onClose?: () => void }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [locale])
 
   const results = useMemo(() => {
     if (!query.trim()) return []
@@ -208,7 +209,7 @@ export function MobileToolSearchTrigger({ onClose }: { onClose?: () => void }) {
         <Search className="h-4 w-4 shrink-0 text-gray-400" />
         <Input
           type="search"
-          placeholder="搜索工具..."
+          placeholder={locale === "en" ? "Search tools..." : "搜索工具..."}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="h-7 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
@@ -218,7 +219,7 @@ export function MobileToolSearchTrigger({ onClose }: { onClose?: () => void }) {
         <div className="max-h-72 overflow-y-auto rounded-md border bg-white">
           {results.length === 0 ? (
             <p className="px-3 py-4 text-center text-xs text-gray-500">
-              未找到匹配的工具
+              {locale === "en" ? "No matching tools found" : "未找到匹配的工具"}
             </p>
           ) : (
             <ul>
@@ -242,11 +243,11 @@ export function MobileToolSearchTrigger({ onClose }: { onClose?: () => void }) {
                     </div>
                     {tool.isFree ? (
                       <span className="shrink-0 rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700">
-                        免费
+                        {locale === "en" ? "Free" : "免费"}
                       </span>
                     ) : (
                       <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
-                        {tool.creditsCost} 积分
+                        {locale === "en" ? `${tool.creditsCost} credits` : `${tool.creditsCost} 积分`}
                       </span>
                     )}
                   </button>

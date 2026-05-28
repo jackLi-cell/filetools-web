@@ -4,19 +4,22 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/ca
 import { Badge } from "@/components/ui/badge"
 import { categories } from "@/config/tools"
 import { AiHero } from "@/components/ai/ai-hero"
-import { siteConfig } from "@/config/site"
 import { fetchTools } from "@/lib/tools-service"
 import { getDictionary } from "@/i18n/get-dictionary"
 import type { Locale } from "@/i18n/config"
+import { localizedSeoFromHeaders } from "@/lib/seo"
+import { localizeTools } from "@/lib/localized-tools"
 
 export const dynamic = "force-dynamic"
 export const runtime = "edge"
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params
+  const seo = await localizedSeoFromHeaders(locale, "/")
   return {
     alternates: {
-      canonical: `${siteConfig.url}/${locale}`,
+      canonical: seo.canonical,
+      languages: seo.languages,
     },
   }
 }
@@ -24,7 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   const dict = await getDictionary(locale as Locale)
-  const popularTools = (await fetchTools()).slice(0, 8)
+  const popularTools = localizeTools((await fetchTools()).slice(0, 8), locale)
   const prefix = `/${locale}`
 
   return (

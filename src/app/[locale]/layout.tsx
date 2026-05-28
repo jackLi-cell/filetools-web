@@ -5,7 +5,7 @@ import { getDictionary } from "@/i18n/get-dictionary"
 import { AppShell } from "@/components/layout/app-shell"
 import { AuthProvider } from "@/lib/auth-context"
 import { HtmlLangSetter } from "@/components/html-lang-setter"
-import { siteConfig } from "@/config/site"
+import { getSiteUrlFromCurrentHeaders, localizedSeoFromHeaders } from "@/lib/seo"
 
 export async function generateStaticParams() {
   return i18n.locales.map((locale) => ({ locale }))
@@ -18,6 +18,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params
   const dict = await getDictionary(locale as Locale)
+  const baseUrl = await getSiteUrlFromCurrentHeaders()
+  const seo = await localizedSeoFromHeaders(locale, "/")
 
   return {
     title: {
@@ -26,11 +28,11 @@ export async function generateMetadata({
     },
     description: dict.site.description,
     keywords: dict.site.keywords,
-    metadataBase: new URL(siteConfig.url),
+    metadataBase: new URL(baseUrl),
     openGraph: {
       title: dict.site.title,
       description: dict.site.description,
-      url: siteConfig.url,
+      url: seo.canonical,
       siteName: dict.site.name,
       locale: locale,
       type: "website",
@@ -40,10 +42,8 @@ export async function generateMetadata({
       follow: true,
     },
     alternates: {
-      languages: {
-        "zh-CN": `${siteConfig.url}/zh-CN`,
-        en: `${siteConfig.url}/en`,
-      },
+      canonical: seo.canonical,
+      languages: seo.languages,
     },
   }
 }

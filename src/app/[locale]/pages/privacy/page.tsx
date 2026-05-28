@@ -1,15 +1,91 @@
 import { Metadata } from "next"
 import { siteConfig } from "@/config/site"
+import type { Locale } from "@/i18n/config"
+import { localizedSeoFromHeaders } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: "隐私政策",
-  description: `${siteConfig.name} 隐私政策：了解我们如何收集、使用和保护您的信息。`,
-  alternates: {
-    canonical: `${siteConfig.url}/pages/privacy`,
-  },
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>
+}): Promise<Metadata> {
+  const { locale } = await params
+  const seo = await localizedSeoFromHeaders(locale, "/pages/privacy")
+  const isEn = locale === "en"
+
+  return {
+    title: isEn ? "Privacy Policy" : "隐私政策",
+    description: isEn
+      ? `${siteConfig.nameEn} privacy policy: how files, accounts, cookies, AI assistant data, payments, and server logs are handled and protected.`
+      : `${siteConfig.name} 隐私政策：了解我们如何收集、使用和保护您的信息。`,
+    alternates: {
+      canonical: seo.canonical,
+      languages: seo.languages,
+    },
+    openGraph: {
+      title: isEn ? "Privacy Policy" : "隐私政策",
+      description: isEn
+        ? `${siteConfig.nameEn} privacy policy and data handling notes.`
+        : `${siteConfig.name} 隐私政策与数据处理说明。`,
+      url: seo.canonical,
+      type: "website",
+    },
+  }
 }
 
-export default function PrivacyPage() {
+function EnglishPrivacyPage() {
+  return (
+    <div className="container mx-auto px-4 py-10 max-w-3xl">
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
+      <p className="text-xs text-gray-500 mb-8">Last updated: May 2026</p>
+      <div className="text-sm text-gray-700 space-y-6 leading-relaxed">
+        <p>{siteConfig.nameEn} respects your privacy. This policy explains how we collect, use, store, and protect information when you use our file processing tools, account features, AI assistant, and payment-related services.</p>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">1. Information We Collect</h2>
+          <p>Account features may collect your email address, encrypted password, display name, session cookies, and basic security information. File processing tools may receive files only when a server-side tool is required.</p>
+          <p className="mt-2">Many browser-based tools run locally on your device. In those cases, files are not uploaded to our servers.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">2. File Processing</h2>
+          <p>Server-processed source files are removed after processing. Result files are retained temporarily so you can download them, then automatically cleaned up. Do not upload state secrets, highly sensitive business secrets, full financial credentials, or other extremely sensitive materials.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">3. AI Assistant</h2>
+          <p>When you use the AI assistant, your prompt and temporary attachments may be processed by configured AI service providers. Attachments are used only for the current request and are cleared automatically. AI output is for reference only and should be reviewed before use.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">4. Payments and Credits</h2>
+          <p>Payments are handled by third-party payment providers. We do not store bank card numbers, payment passwords, or full payment credentials. We keep order status, amount, timestamps, and credit transaction records for account and billing reconciliation.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">5. Cookies and Logs</h2>
+          <p>We use necessary cookies for login sessions and basic preferences. Server logs may include request path, status code, user agent, referrer, and IP-related security data for abuse prevention, troubleshooting, and service reliability.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">6. Third-Party Services</h2>
+          <p>The site may use cloud hosting, reverse proxy services, CAPTCHA, payment providers, and AI service providers. Their own privacy policies apply when their services process data as part of the service workflow.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">7. Your Rights</h2>
+          <p>You may contact us to ask about your data, request account deletion, or raise privacy questions. Contact: <a href={`mailto:${siteConfig.email}`} className="text-blue-600 hover:underline">{siteConfig.email}</a>.</p>
+          <p className="text-xs text-gray-500 mt-2">Please do not send passwords, bank card numbers, ID numbers, API keys, or full contracts by email.</p>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+export default async function PrivacyPage({ params }: { params: Promise<{ locale: Locale }> }) {
+  const { locale } = await params
+
+  if (locale === "en") return <EnglishPrivacyPage />
+
   return (
     <div className="container mx-auto px-4 py-10 max-w-3xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-2">隐私政策</h1>

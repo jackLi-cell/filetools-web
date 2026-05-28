@@ -1,15 +1,95 @@
 import { Metadata } from "next"
 import { siteConfig } from "@/config/site"
+import type { Locale } from "@/i18n/config"
+import { localizedSeoFromHeaders } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: "免责声明",
-  description: `${siteConfig.name} 免责声明：了解服务使用条款和责任边界。`,
-  alternates: {
-    canonical: `${siteConfig.url}/pages/disclaimer`,
-  },
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>
+}): Promise<Metadata> {
+  const { locale } = await params
+  const seo = await localizedSeoFromHeaders(locale, "/pages/disclaimer")
+  const isEn = locale === "en"
+
+  return {
+    title: isEn ? "Disclaimer" : "免责声明",
+    description: isEn
+      ? `${siteConfig.nameEn} disclaimer: file conversion results, AI output, external links, electronic signatures, payments, and service availability are provided with defined limits.`
+      : `${siteConfig.name} 免责声明：了解服务使用条款和责任边界。`,
+    alternates: {
+      canonical: seo.canonical,
+      languages: seo.languages,
+    },
+    openGraph: {
+      title: isEn ? "Disclaimer" : "免责声明",
+      description: isEn
+        ? `${siteConfig.nameEn} service responsibility boundaries and usage notes.`
+        : `${siteConfig.name} 服务责任边界与使用须知。`,
+      url: seo.canonical,
+      type: "website",
+    },
+  }
 }
 
-export default function DisclaimerPage() {
+function EnglishDisclaimerPage() {
+  return (
+    <div className="container mx-auto px-4 py-10 max-w-3xl">
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">Disclaimer</h1>
+      <p className="text-xs text-gray-500 mb-8">Last updated: May 2026</p>
+      <div className="text-sm text-gray-700 space-y-6 leading-relaxed">
+        <p>Please read this disclaimer before using any tools, content, or services provided by {siteConfig.nameEn}. By using the site, you agree to the following limitations.</p>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">1. Nature of Service</h2>
+          <p>The site provides online file conversion, compression, watermarking, preview, and utility tools. Results are for reference and productivity support only. They do not constitute legal, tax, financial, medical, investment, or other professional advice.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">2. Result Accuracy</h2>
+          <ul className="list-disc pl-5 space-y-1.5">
+            <li>Document conversion may change fonts, spacing, layout, or pagination.</li>
+            <li>OCR and AI-generated content may contain mistakes.</li>
+            <li>Compression may reduce image, audio, or video quality.</li>
+            <li>Important files should be manually reviewed before use.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">3. File Safety</h2>
+          <p>We work to protect uploaded files, but no online service can guarantee absolute security. Avoid uploading state secrets, highly confidential business data, full payment credentials, or extremely sensitive personal information.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">4. Electronic Signatures and Watermarks</h2>
+          <p>Signature image tools do not create legally certified electronic signatures. Watermark tools can help mark ownership but cannot replace legal copyright protection.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">5. Third-Party Links and Services</h2>
+          <p>Pages may link to third-party websites or depend on third-party providers. We are not responsible for their content, privacy practices, security, availability, or policy changes.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">6. Credits, Payments, and Availability</h2>
+          <p>Credits are virtual service credits and cannot be exchanged for cash unless a specific refund rule applies. The site may be interrupted by maintenance, upgrades, failures, or force majeure. Download processed files promptly before temporary result files expire.</p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-3">7. Contact</h2>
+          <p>For questions or reports, contact: <a href={`mailto:${siteConfig.email}`} className="text-blue-600 hover:underline">{siteConfig.email}</a>.</p>
+          <p className="text-xs text-gray-500 mt-2">Do not send passwords, payment credentials, full contracts, financial documents, ID numbers, or API keys by email.</p>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+export default async function DisclaimerPage({ params }: { params: Promise<{ locale: Locale }> }) {
+  const { locale } = await params
+
+  if (locale === "en") return <EnglishDisclaimerPage />
+
   return (
     <div className="container mx-auto px-4 py-10 max-w-3xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-2">免责声明</h1>
