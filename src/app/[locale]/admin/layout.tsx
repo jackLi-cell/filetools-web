@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
+import { getLocalePath, localizePath } from "@/lib/locale-path"
 
 const navItems = [
   { href: "/admin", label: "控制台", icon: LayoutDashboard },
@@ -30,21 +31,25 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const { user, loading, logout } = useAuth()
-  const isLoginPage = pathname === "/admin/login"
+  const { locale, localePrefix, pathWithoutLocale } = getLocalePath(pathname)
+  const isLoginPage = pathWithoutLocale === "/admin/login"
+  const adminHomeHref = localizePath("/admin", locale)
+  const adminLoginHref = localizePath("/admin/login", locale)
+  const currentAdminHref = localizePath(pathWithoutLocale || "/admin", locale)
 
   useEffect(() => {
     if (loading) return
     if (isLoginPage) {
-      if (user?.role === "admin") router.push("/admin")
+      if (user?.role === "admin") router.push(adminHomeHref)
       return
     }
-    if (!user) router.push(`/admin/login?next=${encodeURIComponent(pathname || "/admin")}`)
-    else if (user.role !== "admin") router.push("/admin/login")
-  }, [isLoginPage, loading, pathname, router, user])
+    if (!user) router.push(`${adminLoginHref}?next=${encodeURIComponent(currentAdminHref)}`)
+    else if (user.role !== "admin") router.push(adminLoginHref)
+  }, [adminHomeHref, adminLoginHref, currentAdminHref, isLoginPage, loading, router, user])
 
   const doLogout = async () => {
     await logout()
-    router.push("/admin/login")
+    router.push(adminLoginHref)
   }
 
   if (isLoginPage) {
@@ -74,12 +79,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 space-y-1 px-3 py-4">
           {navItems.map((item) => {
-            const active = pathname === item.href || (item.href !== "/admin" && pathname?.startsWith(item.href))
+            const active = pathWithoutLocale === item.href || (item.href !== "/admin" && pathWithoutLocale.startsWith(item.href))
             const Icon = item.icon
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={localizePath(item.href, locale)}
                 className={cn(
                   "flex h-9 items-center gap-2 rounded-md px-3 text-sm transition-colors",
                   active
@@ -96,7 +101,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         <div className="border-t border-gray-200 p-3">
           <Link
-            href="/"
+            href={localePrefix}
             className="mb-2 flex h-9 items-center gap-2 rounded-md px-3 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900"
           >
             <Home className="h-4 w-4" />
@@ -113,13 +118,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 md:px-6">
           <div>
             <p className="text-sm font-semibold text-gray-900">
-              {navItems.find((item) => pathname === item.href || (item.href !== "/admin" && pathname?.startsWith(item.href)))?.label ?? "管理后台"}
+              {navItems.find((item) => pathWithoutLocale === item.href || (item.href !== "/admin" && pathWithoutLocale.startsWith(item.href)))?.label ?? "管理后台"}
             </p>
             <p className="hidden text-[11px] text-gray-500 sm:block">文件处理工具站运营管理</p>
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden text-xs text-gray-500 sm:inline">{user.email}</span>
-            <Button variant="outline" size="sm" onClick={() => router.push("/")}>
+            <Button variant="outline" size="sm" onClick={() => router.push(localePrefix)}>
               前台
             </Button>
           </div>

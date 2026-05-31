@@ -2,29 +2,30 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { LockKeyhole, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
 import { useAuth, type User } from "@/lib/auth-context"
+import { getLocalePath, localizePath, normalizeAdminNextPath } from "@/lib/locale-path"
 
 export default function AdminLoginPage() {
   const router = useRouter()
+  const pathname = usePathname()
   const { user, loading, refresh, logout } = useAuth()
+  const { locale, localePrefix } = getLocalePath(pathname)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [nextPath, setNextPath] = useState("/admin")
+  const [nextPath, setNextPath] = useState(() => localizePath("/admin", locale))
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     const next = new URLSearchParams(window.location.search).get("next")
-    if (next?.startsWith("/admin") && !next.startsWith("//") && next !== "/admin/login") {
-      setNextPath(next)
-    }
-  }, [])
+    setNextPath(normalizeAdminNextPath(next, locale) || localizePath("/admin", locale))
+  }, [locale])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -125,7 +126,7 @@ export default function AdminLoginPage() {
             )}
 
             <div className="mt-6 border-t border-gray-100 pt-4 text-center">
-              <Link href="/" className="text-xs text-gray-500 hover:text-gray-900">
+              <Link href={localePrefix} className="text-xs text-gray-500 hover:text-gray-900">
                 返回前台
               </Link>
             </div>
