@@ -29,6 +29,10 @@ export async function generateMetadata({
     description: dict.site.description,
     keywords: dict.site.keywords,
     metadataBase: new URL(baseUrl),
+    icons: {
+      icon: "/favicon.ico",
+      apple: "/apple-touch-icon.png",
+    },
     openGraph: {
       title: dict.site.title,
       description: dict.site.description,
