@@ -15,8 +15,8 @@ export async function generateMetadata({
   return {
     title: isEn ? "Privacy Policy" : "隐私政策",
     description: isEn
-      ? `${siteConfig.nameEn} privacy policy: how files, accounts, cookies, AI assistant data, payments, and server logs are handled and protected.`
-      : `${siteConfig.name} 隐私政策：了解我们如何收集、使用和保护您的信息。`,
+      ? `${siteConfig.nameEn} privacy policy: how files, accounts, cookies, Baidu Analytics data, AI assistant data, payments, and server logs are handled and protected.`
+      : `${siteConfig.name} 隐私政策：了解我们如何收集、使用和保护您的信息，包括百度统计访问数据。`,
     alternates: {
       canonical: seo.canonical,
       languages: seo.languages,
@@ -63,12 +63,12 @@ function EnglishPrivacyPage() {
 
         <section>
           <h2 className="text-base font-semibold text-gray-900 mb-3">5. Cookies and Logs</h2>
-          <p>We use necessary cookies for login sessions and basic preferences. Server logs may include request path, status code, user agent, referrer, and IP-related security data for abuse prevention, troubleshooting, and service reliability.</p>
+          <p>We use necessary cookies for login sessions and basic preferences. Baidu Analytics may use cookies or similar technologies to provide aggregated page view, referrer, device, and browser statistics. Server logs may include request path, status code, user agent, referrer, and IP-related security data for abuse prevention, troubleshooting, and service reliability.</p>
         </section>
 
         <section>
           <h2 className="text-base font-semibold text-gray-900 mb-3">6. Third-Party Services</h2>
-          <p>The site may use cloud hosting, reverse proxy services, CAPTCHA, payment providers, and AI service providers. Their own privacy policies apply when their services process data as part of the service workflow.</p>
+          <p>The site may use Baidu Analytics for aggregated visit statistics, plus cloud hosting, reverse proxy services, CAPTCHA, payment providers, and AI service providers. Their own privacy policies apply when their services process data as part of the service workflow. Baidu Analytics is used for site improvement and troubleshooting, not for processing uploaded files, account passwords, payment credentials, or AI prompt content.</p>
         </section>
 
         <section>
@@ -155,12 +155,12 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
         <section>
           <h2 className="text-base font-semibold text-gray-900 mb-3">6. Cookie 使用</h2>
-          <p>本站使用 session_token（维持登录状态，有效期 7 天）和 tool_favorites（记录收藏的工具，有效期 365 天）。本站不使用第三方追踪 Cookie。</p>
+          <p>本站使用 session_token（维持登录状态，有效期 7 天）和 tool_favorites（记录收藏的工具，有效期 365 天）。百度统计可能使用 Cookie 或类似技术生成匿名访问量、访问来源、设备和浏览器等汇总统计，用于发现错误、评估页面质量和改进站点体验。</p>
         </section>
 
         <section>
           <h2 className="text-base font-semibold text-gray-900 mb-3">7. 第三方服务</h2>
-          <p>本站可能使用以下第三方服务：腾讯云服务器与 Nginx（服务器托管和反向代理）、支付宝/微信支付（支付处理）、验证码服务（防机器人）、AI 服务上游（用于灵猫助手的对话与文档理解）。本站不对第三方服务的隐私政策负责。</p>
+          <p>本站可能使用以下第三方服务：百度统计（匿名访问统计）、腾讯云服务器与 Nginx（服务器托管和反向代理）、支付宝/微信支付（支付处理）、验证码服务（防机器人）、AI 服务上游（用于灵猫助手的对话与文档理解）。百度统计不用于处理上传文件、账号密码、支付凭证或 AI 提问正文。本站不对第三方服务的隐私政策负责。</p>
         </section>
 
         <section>
